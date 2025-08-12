@@ -1,5 +1,5 @@
 # TripMazerResearch
 
 ```
-### to add code relates
+### to add code related
 ```
