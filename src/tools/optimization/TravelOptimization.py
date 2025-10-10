@@ -109,6 +109,7 @@ Based on the extracted requirements, analyze and optimize transportation options
 6. Provide booking platform recommendations
 7. Consider seasonal pricing and availability
 8. Use correct currency throughout
+9. **BUDGET UTILIZATION**: Recommend transportation options that make good use of the available budget while considering user preferences and comfort
 
 **RESPONSE FORMAT (MANDATORY):**
 

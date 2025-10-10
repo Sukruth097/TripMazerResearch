@@ -2,6 +2,10 @@ import os
 import sys
 import json
 from typing import Dict, Any
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Add the src directory to Python path when running directly
 if __name__ == "__main__":
@@ -111,6 +115,7 @@ Based on the extracted requirements, create a detailed itinerary plan.
 6. Consider budget constraints for activity selection
 7. Use the CORRECT CURRENCY throughout all pricing
 8. Provide Google Maps links as clickable place names
+9. **BUDGET UTILIZATION**: Aim to use most of the available budget to create comprehensive and engaging itineraries that match user preferences
 
 **Response Format (MANDATORY):**
 

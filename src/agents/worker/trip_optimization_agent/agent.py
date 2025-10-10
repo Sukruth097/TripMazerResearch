@@ -1,11 +1,3 @@
-"""
-Trip Optimization Agent using LangGraph
-
-A comprehensive multi-agent system for trip planning that intelligently routes
-through accommodation, itinerary, restaurant, and travel optimization based on
-user preferences while managing budget allocation and state tracking.
-"""
-
 import os
 import sys
 import json
@@ -30,7 +22,10 @@ from src.tools.optimization import (
 # Import state manager
 from src.state.state_manager import TripState, get_state_manager, reset_state
 
-# Import Perplexity service
+# Import Google Gemini for LLM processing
+from google import genai
+
+# Import Perplexity service (for tools)
 from src.services.perplexity_service import PerplexityService
 
 
@@ -62,153 +57,194 @@ class TripOptimizationAgent:
             raise ValueError("PERPLEXITY_API_KEY environment variable is required")
         return PerplexityService(api_key)
     
+    def _get_gemini_client(self) -> genai.Client:
+        """Get Google Gemini client with API key."""
+        # Use the provided API key directly
+        api_key = "AIzaSyBQ-W6UDXRxkUHp15PT1N96RDp_iUV0PdE"
+        client = genai.Client(api_key=api_key)
+        return client
+    
     def _extract_preferences_and_routing(self, query: str) -> Dict[str, Any]:
         """
-        Extract user preferences and determine tool routing order from query using LLM.
+        Extract user preferences and determine tool routing order from query using Google Gemini.
         
         Returns:
             Dict with preferences and routing order
         """
         try:
-            perplexity = self._get_perplexity_service()
+            # Get Gemini client
+            client = self._get_gemini_client()
             
-            # System prompt for preference extraction
-            system_prompt = """
-            You are an expert travel preferences analyzer. Extract specific travel information from user queries.
-            
-            Analyze the user's travel query and extract the following information in a structured JSON format:
-            
-            1. **Budget**: Extract any mentioned budget amount (numbers only, no currency symbols)
-            2. **Currency**: Determine currency based on:
-               - ₹ symbol OR Indian cities (Mumbai, Delhi, Bangalore, Chennai, Kolkata, etc.) = ₹
-               - $ symbol OR international cities = $
-               - Default to $ if unclear
-            3. **Dates**: Extract travel dates in DD-MM-YYYY format, look for "from X to Y" or "X to Y" patterns
-            4. **From Location**: Source/departure location
-            5. **To Location**: Destination location
-            6. **Travelers**: Number of people (look for "couple", "family", "2 people", "solo", etc.)
-            7. **Priorities**: Rank these categories by user interest/mentions (1=highest, 4=lowest):
-               - accommodation (hotels, stay, lodging, resort)
-               - itinerary (plan, schedule, activities, sightseeing, temples, experiences)
-               - restaurant (food, dining, eat, meal, cuisine)
-               - travel (transport, flight, train, bus, route)
-            
-            Return ONLY a valid JSON object with these exact keys:
-            {
-                "budget": number or null,
-                "currency": "₹" or "$",
-                "dates": "DD-MM-YYYY to DD-MM-YYYY" or null,
-                "from_location": "location" or null,
-                "to_location": "location" or null,
-                "travelers": number,
-                "routing_order": ["tool1", "tool2", "tool3", "tool4"]
-            }
-            
-            For routing_order, arrange tools by priority: ["highest_priority", "second", "third", "lowest"]
-            Use these exact tool names: "accommodation", "itinerary", "restaurant", "travel"
-            If no clear preferences, use: ["itinerary", "travel", "accommodation", "restaurant"]
+            # Create comprehensive system prompt for Gemini
+            prompt = f"""
+            TASK: Extract travel information for budget-aware trip planning and tool routing.
+
+            QUERY: "{query}"
+
+            EXTRACT these exact keys for JSON response:
+
+            1. **budget**: Extract ONLY numbers (25000, 1500, 50000). Look for "rupees 25000", "budget $1500", "₹50000", "with 25k budget". If no budget mentioned → null. Budget drives all planning decisions.
+
+            2. **currency**: 
+               - "INR" for: Indian locations (Mumbai, Delhi, Bangalore, Chennai, Kolkata, Hyderabad, Pune, Goa, Kerala, Tamil Nadu, Karnataka, etc.) OR rupee indicators ("rupees", "₹", "INR")
+               - "USD" for: $ symbol, "dollars", international locations (New York, Paris, London, etc.)
+               - null if completely unclear
+
+            3. **dates**: Convert to "DD-MM-YYYY to DD-MM-YYYY" format. Handle various inputs:
+               - "25-12-2025 to 30-12-2025" → "25-12-2025 to 30-12-2025"
+               - "Dec 25-30, 2025" → "25-12-2025 to 30-12-2025"  
+               - "25th to 30th December" → "25-12-2025 to 30-12-2025"
+               - If unclear → "Not specified"
+
+            4. **from_location**: Departure city. Look for "from [city]", "starting from [city]", or first city mentioned.
+
+            5. **to_location**: Destination city. Look for "to [city]", "destination [city]", or second city mentioned.
+
+            6. **travelers**: EXACT number mentioned first ("3 persons", "5 people", "8 travelers"). Fallbacks only if no number: couple=2, family=4, solo=1.
+
+            7. **routing_order**: CRITICAL for budget allocation. Rank tools by user emphasis and budget impact:
+
+            BUDGET-DRIVEN ROUTING RULES:
+            - **High Budget** (>₹50,000 or >$2000): ["accommodation", "itinerary", "travel", "restaurant"] (luxury focus)
+            - **Medium Budget** (₹20,000-₹50,000 or $800-$2000): ["itinerary", "accommodation", "travel", "restaurant"] (balanced)
+            - **Low Budget** (<₹20,000 or <$800): ["travel", "itinerary", "accommodation", "restaurant"] (cost optimization)
+            - **No Budget**: ["itinerary", "travel", "accommodation", "restaurant"] (experience focus)
+
+            USER EMPHASIS OVERRIDES:
+            - Food emphasis ("good food", "dining", "cuisine", "veg/non-veg") → restaurant first
+            - Comfort emphasis ("luxury", "comfortable stay", "premium hotels") → accommodation first
+            - Activity emphasis ("sightseeing", "activities", "experiences", "adventure") → itinerary first
+            - Transport concerns ("prefer trains", "flight booking", "travel options") → travel first
+
+            Tools available:
+            - "accommodation": hotels, stays, lodging (35% budget allocation)
+            - "itinerary": activities, sightseeing, experiences (20% budget allocation)
+            - "restaurant": food, dining, meals (15% budget allocation)  
+            - "travel": transport, flights, trains, buses (30% budget allocation)
+
+            EXAMPLES:
+
+            Query: "Plan trip from Bangalore to Coorg for 3 persons from 25-12-2025 to 30-12-2025 with budget rupees 25000"
+            Output: {{"budget": 25000, "currency": "INR", "dates": "25-12-2025 to 30-12-2025", "from_location": "Bangalore", "to_location": "Coorg", "travelers": 3, "routing_order": ["itinerary", "accommodation", "travel", "restaurant"]}}
+
+            Query: "Luxury food tour in Mumbai for couple, budget ₹80000, good hotels and fine dining"
+            Output: {{"budget": 80000, "currency": "INR", "dates": "Not specified", "from_location": "Not specified", "to_location": "Mumbai", "travelers": 2, "routing_order": ["restaurant", "accommodation", "itinerary", "travel"]}}
+
+            Query: "Budget trip from Delhi to Manali for 5 people, ₹15000 total, prefer buses"
+            Output: {{"budget": 15000, "currency": "INR", "dates": "Not specified", "from_location": "Delhi", "to_location": "Manali", "travelers": 5, "routing_order": ["travel", "itinerary", "accommodation", "restaurant"]}}
+
+            Query: "Family vacation to Goa, comfortable stay, 4 persons"
+            Output: {{"budget": null, "currency": "INR", "dates": "Not specified", "from_location": "Not specified", "to_location": "Goa", "travelers": 4, "routing_order": ["accommodation", "itinerary", "travel", "restaurant"]}}
+
+            Return ONLY valid JSON:
             """
             
-            # Use LLM to extract preferences
-            result = perplexity.search(
-                query=f"Extract travel preferences from this query: {query}",
-                system_prompt=system_prompt,
-                temperature=0.1
+            # Use Gemini to extract preferences
+            response = client.models.generate_content(
+                model="gemini-2.5-pro",
+                contents=prompt
             )
             
-            # Parse LLM response
-            response_text = result.get('content', '')
+            # Parse response
+            response_text = response.text.strip()
             
-            # Try to extract JSON from response
+            # Clean response (remove any markdown formatting)
+            if response_text.startswith('```json'):
+                response_text = response_text.replace('```json', '').replace('```', '').strip()
+            elif response_text.startswith('```'):
+                response_text = response_text.replace('```', '').strip()
+            
+            # Parse JSON response
             try:
-                # Look for JSON in response
-                import re
-                json_match = re.search(r'\{[^{}]*\}', response_text, re.DOTALL)
-                if json_match:
-                    extracted_json = json_match.group(0)
-                    preferences = json.loads(extracted_json)
-                else:
-                    # Fallback: try to parse entire response as JSON
-                    preferences = json.loads(response_text)
+                preferences = json.loads(response_text)
                 
-                # Validate and set defaults
-                preferences = {
-                    'budget': preferences.get('budget') or 10000,
-                    'currency': preferences.get('currency') or '$',
-                    'dates': preferences.get('dates') or 'Not specified',
-                    'from_location': preferences.get('from_location') or 'Not specified',
-                    'to_location': preferences.get('to_location') or 'Not specified',
-                    'travelers': preferences.get('travelers') or 1,
-                    'routing_order': preferences.get('routing_order') or ["itinerary", "travel", "accommodation", "restaurant"]
+                # Validate and set defaults for missing fields (no default budget)
+                validated_preferences = {
+                    'budget': preferences.get('budget'),  # No default budget - must come from query
+                    'currency': preferences.get('currency', 'USD'),
+                    'dates': preferences.get('dates', 'Not specified'),
+                    'from_location': preferences.get('from_location', 'Not specified'),
+                    'to_location': preferences.get('to_location', 'Not specified'),
+                    'travelers': preferences.get('travelers', 1),
+                    'routing_order': preferences.get('routing_order', ["itinerary", "travel", "accommodation", "restaurant"])
                 }
                 
-                return preferences
+                print(f"✅ Extracted: {validated_preferences}")
+                return validated_preferences
                 
-            except (json.JSONDecodeError, KeyError) as e:
-                print(f"⚠️ JSON parsing failed: {e}")
-                print(f"LLM Response: {response_text}")
-                # Fallback to basic keyword-based extraction
-                return self._fallback_extraction(query)
+            except json.JSONDecodeError as e:
+                print(f"⚠️ JSON parse error: {e}")
+                return self._basic_fallback(query)
                 
         except Exception as e:
-            print(f"⚠️ LLM extraction failed: {e}")
-            # Fallback to basic keyword-based extraction
-            return self._fallback_extraction(query)
+            print(f"⚠️ Gemini error: {e}")
+            return self._basic_fallback(query)
     
-    def _fallback_extraction(self, query: str) -> Dict[str, Any]:
+    def _basic_fallback(self, query: str) -> Dict[str, Any]:
         """
-        Fallback preference extraction using simple keyword matching.
+        Basic fallback when Gemini extraction fails.
         """
+        print("🔄 Using fallback...")
+        
         query_lower = query.lower()
+        
+        # Default preferences
         preferences = {
-            'budget': 10000,  # Default budget
-            'currency': '$',   # Default currency
+            'budget': None,
+            'currency': 'USD',
             'dates': 'Not specified',
             'from_location': 'Not specified',
             'to_location': 'Not specified',
             'travelers': 1,
-            'routing_order': ["itinerary", "travel", "accommodation", "restaurant"]
+            'routing_order': ["itinerary", "accommodation", "travel", "restaurant"]
         }
         
-        # Simple currency detection
-        if '₹' in query or any(city in query_lower for city in ['mumbai', 'delhi', 'bangalore', 'chennai', 'kolkata']):
-            preferences['currency'] = '₹'
+        # Simple Indian location detection
+        indian_words = ['rupee', '₹', 'inr', 'mumbai', 'delhi', 'bangalore', 'chennai', 'kolkata', 'hyderabad', 'pune', 
+                       'goa', 'kerala', 'tamil nadu', 'karnataka', 'maharashtra', 'gujarat', 'rajasthan', 'punjab',
+                       'coorg', 'mysore', 'ooty', 'shimla', 'manali', 'darjeeling', 'udaipur', 'jaipur', 'agra']
         
-        # Simple traveler detection
-        if 'couple' in query_lower:
-            preferences['travelers'] = 2
-        elif 'family' in query_lower:
-            preferences['travelers'] = 4
+        if any(word in query_lower for word in indian_words):
+            preferences['currency'] = 'INR'
         
-        # Simple priority detection based on keyword frequency
-        tool_priorities = {
-            'accommodation': sum(1 for word in ['hotel', 'stay', 'accommodation', 'lodging', 'resort'] if word in query_lower),
-            'itinerary': sum(1 for word in ['plan', 'itinerary', 'schedule', 'activities', 'sightseeing', 'temple'] if word in query_lower),
-            'restaurant': sum(1 for word in ['food', 'restaurant', 'dining', 'eat', 'meal'] if word in query_lower),
-            'travel': sum(1 for word in ['transport', 'flight', 'train', 'bus', 'travel', 'route'] if word in query_lower)
-        }
+        # Simple traveler count - prioritize actual numbers in query
+        import re
         
-        # Sort by priority
-        sorted_tools = sorted(tool_priorities.items(), key=lambda x: x[1], reverse=True)
-        preferences['routing_order'] = [tool for tool, _ in sorted_tools]
+        # Look for explicit numbers first
+        number_patterns = [r'(\d+)\s*(?:persons?|people|travelers?)', r'for\s*(\d+)']
+        travelers_found = False
+        
+        for pattern in number_patterns:
+            match = re.search(pattern, query_lower)
+            if match:
+                preferences['travelers'] = int(match.group(1))
+                travelers_found = True
+                break
+        
+        # Only use couple/family as fallback if no explicit number found
+        if not travelers_found:
+            if 'couple' in query_lower:
+                preferences['travelers'] = 2
+            elif 'family' in query_lower:
+                preferences['travelers'] = 4  # Default family size as fallback
         
         return preferences
     
     def _allocate_budget(self, total_budget: float, preferences: Dict[str, Any]) -> Dict[str, float]:
         """
-        Intelligently allocate budget across tools based on preferences.
+        Intelligently allocate budget across tools based on user preferences.
+        Dynamic allocation that adjusts based on user emphasis and actual spending.
         """
         routing_order = preferences.get('routing_order', self.default_sequence)
+        budget = preferences.get('budget', total_budget)
         
-        # Base allocation percentages
-        base_allocation = {
-            'accommodation': 0.35,  # 35%
-            'itinerary': 0.20,      # 20%
-            'travel': 0.30,         # 30%
-            'restaurant': 0.15      # 15%
-        }
+        # Analyze user query for preference indicators
+        original_query = preferences.get('original_query', '').lower()
         
-        # Adjust based on routing priority (first tool gets 10% bonus)
+        # Dynamic base allocation based on user preferences
+        base_allocation = self._get_preference_based_allocation(original_query, budget)
+        
+        # Adjust based on routing priority (first tool gets additional bonus)
         allocation = base_allocation.copy()
         
         if routing_order:
@@ -227,7 +263,176 @@ class TripOptimizationAgent:
         # Convert to absolute amounts
         budget_allocation = {tool: total_budget * percentage for tool, percentage in allocation.items()}
         
+        print(f"💰 Budget allocation based on preferences: {[f'{k}: {v:.1%}' for k, v in allocation.items()]}")
         return budget_allocation
+    
+    def _get_preference_based_allocation(self, query: str, budget: float) -> Dict[str, float]:
+        """
+        Use Gemini to intelligently determine budget allocation based on query understanding.
+        
+        Args:
+            query: User query text
+            budget: Total budget amount for context
+            
+        Returns:
+            Dict with tool allocation percentages
+        """
+        try:
+            # Get Gemini client
+            client = self._get_gemini_client()
+            
+            # Create allocation analysis prompt
+            allocation_prompt = f"""
+            TASK: Analyze travel query and determine optimal budget allocation percentages.
+
+            QUERY: "{query}"
+            BUDGET: {budget if budget else "Not specified"}
+
+            Understand the user's priorities and intent from the query context, then allocate budget percentages across these 4 categories:
+
+            1. **accommodation** (hotels, stays, lodging)
+            2. **itinerary** (activities, sightseeing, experiences) 
+            3. **travel** (transport, flights, trains, buses)
+            4. **restaurant** (food, dining, meals)
+
+            ALLOCATION GUIDELINES:
+            - Total must equal 100% (1.0)
+            - Minimum 5% (0.05) per category
+            - Maximum 50% (0.50) per category
+            - Consider user emphasis, budget level, and trip type
+
+            CONTEXT UNDERSTANDING:
+            - Luxury emphasis → higher accommodation %
+            - Food/culinary focus → higher restaurant %
+            - Adventure/sightseeing → higher itinerary %
+            - Long distance/transport concerns → higher travel %
+            - Budget conscious → optimize for value across categories
+            - Family trips → balanced allocation with accommodation focus
+            - Business trips → accommodation and travel focus
+
+            Return ONLY JSON with decimal percentages:
+            {{"accommodation": 0.35, "itinerary": 0.20, "travel": 0.30, "restaurant": 0.15}}
+            """
+            
+            # Use Gemini for intelligent allocation
+            response = client.models.generate_content(
+                model="gemini-2.0-flash-exp",
+                contents=allocation_prompt
+            )
+            
+            response_text = response.text.strip()
+            
+            # Clean response
+            if response_text.startswith('```json'):
+                response_text = response_text.replace('```json', '').replace('```', '').strip()
+            elif response_text.startswith('```'):
+                response_text = response_text.replace('```', '').strip()
+            
+            # Parse allocation
+            allocation = json.loads(response_text)
+            
+            # Validate allocation
+            total = sum(allocation.values())
+            if abs(total - 1.0) > 0.01:  # Allow small rounding errors
+                # Normalize to 100%
+                allocation = {k: v/total for k, v in allocation.items()}
+            
+            # Ensure minimums
+            for tool in ['accommodation', 'itinerary', 'travel', 'restaurant']:
+                if tool not in allocation:
+                    allocation[tool] = 0.05
+                elif allocation[tool] < 0.05:
+                    allocation[tool] = 0.05
+            
+            # Re-normalize after minimum adjustments
+            total = sum(allocation.values())
+            allocation = {k: v/total for k, v in allocation.items()}
+            
+            print(f"🧠 Gemini-based allocation: {[f'{k}: {v:.1%}' for k, v in allocation.items()]}")
+            return allocation
+            
+        except Exception as e:
+            print(f"⚠️ Gemini allocation failed: {e}, using default")
+            # Fallback to balanced default
+            return {
+                'accommodation': 0.35,
+                'itinerary': 0.20, 
+                'travel': 0.30,
+                'restaurant': 0.15
+            }
+    
+    def _reallocate_remaining_budget(self, state: TripState, completed_tools: List[str]) -> Dict[str, float]:
+        """
+        Dynamically reallocate remaining budget after tools complete.
+        
+        Example: Budget ₹10k, travel spent ₹3k → remaining ₹7k redistributed to pending tools
+        """
+        total_budget = state["total_budget"]
+        spent_amounts = state.get("spent_amounts", {})
+        
+        # Calculate actual remaining budget
+        total_spent = sum(spent_amounts.values())
+        remaining_budget = total_budget - total_spent
+        
+        # Get pending tools (not yet completed)
+        all_tools = ["accommodation", "itinerary", "travel", "restaurant"]
+        pending_tools = [tool for tool in all_tools if tool not in completed_tools]
+        
+        if not pending_tools or remaining_budget <= 0:
+            return {tool: 0 for tool in all_tools}
+        
+        # Get routing order for priority
+        routing_order = state.get("user_preferences", {}).get('routing_order', self.default_sequence)
+        
+        # Redistribute remaining budget among pending tools based on priority
+        if len(pending_tools) == 1:
+            # Last tool gets all remaining budget
+            new_allocation = {tool: 0 for tool in all_tools}
+            new_allocation[pending_tools[0]] = remaining_budget
+        else:
+            # Base percentages for pending tools only
+            base_percentages = {
+                'accommodation': 0.40,  # Increased since fewer tools
+                'itinerary': 0.25,      
+                'travel': 0.25,         
+                'restaurant': 0.10      
+            }
+            
+            # Adjust for priority tool among pending tools
+            pending_allocation = {}
+            for tool in pending_tools:
+                pending_allocation[tool] = base_percentages.get(tool, 0.25)  # Default 25%
+            
+            # Give bonus to highest priority pending tool
+            priority_pending = None
+            for tool in routing_order:
+                if tool in pending_tools:
+                    priority_pending = tool
+                    break
+            
+            if priority_pending:
+                bonus = 0.15  # 15% bonus
+                pending_allocation[priority_pending] += bonus
+                # Reduce others proportionally
+                other_pending = [t for t in pending_tools if t != priority_pending]
+                if other_pending:
+                    reduction_per_tool = bonus / len(other_pending)
+                    for tool in other_pending:
+                        pending_allocation[tool] = max(0.05, pending_allocation[tool] - reduction_per_tool)
+            
+            # Normalize to 100%
+            total_percentage = sum(pending_allocation.values())
+            if total_percentage > 0:
+                for tool in pending_allocation:
+                    pending_allocation[tool] = pending_allocation[tool] / total_percentage
+            
+            # Apply to remaining budget
+            new_allocation = {tool: 0 for tool in all_tools}
+            for tool in pending_tools:
+                new_allocation[tool] = remaining_budget * pending_allocation[tool]
+        
+        print(f"💰 Budget reallocation: Remaining ₹{remaining_budget:.0f} → {[f'{k}: ₹{v:.0f}' for k, v in new_allocation.items() if v > 0]}")
+        return new_allocation
     
     def _build_graph(self) -> StateGraph:
         """Build the LangGraph workflow."""
@@ -268,6 +473,9 @@ class TripOptimizationAgent:
         """Process input query and extract preferences."""
         query = state["original_query"]
         preferences = self._extract_preferences_and_routing(query)
+        
+        # Add original query to preferences for budget allocation
+        preferences['original_query'] = query
         
         # Update state with extracted information
         self.state_manager.update_input_info(
@@ -311,8 +519,8 @@ class TripOptimizationAgent:
             original_query = state["original_query"]
             currency = state["currency"]
             
-            # Modify query to include budget constraint
-            budget_aware_query = f"{original_query} Budget for {current_tool}: {currency}{allocated_budget:.0f}"
+            # Modify query to emphasize using the full allocated budget
+            budget_aware_query = f"{original_query} Budget for {current_tool}: {currency}{allocated_budget:.0f} - Please use most of this budget to plan the best possible {current_tool} options according to user preferences."
             
             # Execute tool
             if current_tool == "accommodation":
@@ -354,16 +562,31 @@ class TripOptimizationAgent:
         return self.state_manager.state
     
     def _track_budget(self, state: TripState) -> TripState:
-        """Track budget usage and advance to next step."""
+        """Track budget usage and dynamically reallocate remaining budget."""
         current_tool = self.state_manager.get_current_tool()
         
         if current_tool:
-            # Estimate budget usage (for simulation - in reality, extract from tool response)
+            # Estimate budget usage - Use 99% of allocated budget for comprehensive trip planning
             allocated = self.state_manager.get_remaining_budget_for_category(current_tool)
-            estimated_usage = allocated * 0.8  # Assume 80% of allocated budget is used
+            estimated_usage = allocated * 0.99  # Use 99% of allocated budget for better trip planning
             
             # Record budget usage
             self.state_manager.spend_budget(current_tool, estimated_usage)
+            
+            # After spending, reallocate remaining budget for pending tools
+            completed_tools = list(self.state_manager.state.get("completed_tools", []))
+            completed_tools.append(current_tool)  # Include current tool as completed
+            
+            # Dynamically reallocate remaining budget
+            new_allocation = self._reallocate_remaining_budget(self.state_manager.state, completed_tools)
+            
+            # Update budget allocation in state for remaining tools
+            current_allocation = self.state_manager.state.get("budget_allocation", {})
+            for tool, amount in new_allocation.items():
+                if tool not in completed_tools and amount > 0:
+                    current_allocation[tool] = amount
+            
+            self.state_manager.state["budget_allocation"] = current_allocation
         
         # Advance to next step
         self.state_manager.advance_step()
@@ -531,9 +754,9 @@ if __name__ == "__main__":
     
     # Test query with user preferences
     test_query = """
-    Plan a complete trip to Tokyo from Delhi for a couple from 25-12-2025 to 30-12-2025 
-    with budget rupeees 15000. We prefer temples, traditional experiences, and good food. 
-    We want comfortable accommodation and prefer trains over flights when possible.
+    Plan a complete trip from Bangalore to Coorg  for 3 persons from 25-12-2025 to 30-12-2025 
+    with budget rupees 25000. We prefer mountains, beaches, waterfalls, and avoid traditional experiences. 
+    We want comfortable accommodation and good food for both veg and non veg and prefer trains or buses over flights when possible.
     """
     
     print("🎯 Test Query:")

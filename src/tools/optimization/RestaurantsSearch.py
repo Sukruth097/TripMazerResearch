@@ -91,6 +91,7 @@ def search_restaurants(itinerary_details: str, dates: str, dietary_preferences: 
 6. Include local cuisine specialties
 7. Provide realistic price ranges in correct currency
 8. Add Google Maps links as clickable restaurant names
+9. **BUDGET UTILIZATION**: Recommend restaurants that make good use of the available budget while respecting dietary preferences and user tastes
 
 **RESPONSE FORMAT (MANDATORY):**
 
