@@ -60,7 +60,7 @@ class TripOptimizationAgent:
     def _get_gemini_client(self) -> genai.Client:
         """Get Google Gemini client with API key."""
         # Use the provided API key directly
-        api_key = "AIzaSyBQ-W6UDXRxkUHp15PT1N96RDp_iUV0PdE"
+        api_key = "your api key here "
         client = genai.Client(api_key=api_key)
         return client
     
