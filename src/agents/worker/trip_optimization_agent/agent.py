@@ -1,6 +1,8 @@
 import os
 import sys
 import json
+import logging
+from datetime import datetime
 from typing import Dict, List, Any, Optional
 from dataclasses import dataclass
 
@@ -10,13 +12,13 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..', '..', '..'))
 from langgraph.graph import StateGraph, END
 from langchain_core.messages import HumanMessage, AIMessage
 from langchain.schema import BaseMessage
-
+from dotenv import load_dotenv
 # Import optimization tools
 from src.tools.optimization import (
     search_accommodations, 
     plan_itinerary, 
     search_restaurants, 
-    optimize_travel
+    hybrid_travel_optimization
 )
 
 # Import state manager
@@ -24,10 +26,8 @@ from src.state.state_manager import TripState, get_state_manager, reset_state
 
 # Import Google Gemini for LLM processing
 from google import genai
-
-# Import Perplexity service (for tools)
 from src.services.perplexity_service import PerplexityService
-
+load_dotenv()
 
 class TripOptimizationAgent:
     """
@@ -35,9 +35,13 @@ class TripOptimizationAgent:
     based on user preferences and manages budget allocation.
     """
     
-    def __init__(self):
+    def __init__(self, enable_logging=True):
         self.state_manager = get_state_manager()
         self.graph = self._build_graph()
+        
+        # Setup comprehensive logging
+        if enable_logging:
+            self._setup_logging()
         
         # Default tool routing order
         self.default_sequence = ["itinerary", "travel", "accommodation", "restaurant"]
@@ -47,8 +51,121 @@ class TripOptimizationAgent:
             "accommodation": search_accommodations,
             "itinerary": plan_itinerary,
             "restaurant": search_restaurants,
-            "travel": optimize_travel
+            "travel": hybrid_travel_optimization
         }
+        
+        # Execution tracking
+        self.execution_id = None
+        self.execution_start_time = None
+        
+        self.logger.info("TripOptimizationAgent initialized successfully")
+        self.logger.info(f"Available tools: {list(self.tools.keys())}")
+        self.logger.info(f"Default tool sequence: {self.default_sequence}")
+    
+    def _setup_logging(self):
+        """Setup comprehensive logging for the agent."""
+        # Create logs directory if it doesn't exist
+        logs_dir = "logs"
+        os.makedirs(logs_dir, exist_ok=True)
+        
+        # Create logger
+        self.logger = logging.getLogger('TripOptimizationAgent')
+        self.logger.setLevel(logging.INFO)
+        
+        # Clear existing handlers
+        for handler in self.logger.handlers[:]:
+            self.logger.removeHandler(handler)
+        
+        # Create formatters
+        detailed_formatter = logging.Formatter(
+            '%(asctime)s | %(levelname)-8s | %(name)s | %(message)s',
+            datefmt='%Y-%m-%d %H:%M:%S'
+        )
+        
+        simple_formatter = logging.Formatter(
+            '%(asctime)s | %(message)s',
+            datefmt='%H:%M:%S'
+        )
+        
+        # File handler for detailed logs
+        file_handler = logging.FileHandler(f'{logs_dir}/trip_agent_detailed.log', encoding='utf-8')
+        file_handler.setLevel(logging.INFO)
+        file_handler.setFormatter(detailed_formatter)
+        
+        # Console handler for simple logs
+        console_handler = logging.StreamHandler()
+        console_handler.setLevel(logging.INFO)
+        console_handler.setFormatter(simple_formatter)
+        
+        # Add handlers
+        self.logger.addHandler(file_handler)
+        self.logger.addHandler(console_handler)
+        
+        # Also create execution-specific log file
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        execution_handler = logging.FileHandler(f'{logs_dir}/execution_{timestamp}.log', encoding='utf-8')
+        execution_handler.setLevel(logging.INFO)
+        execution_handler.setFormatter(detailed_formatter)
+        self.logger.addHandler(execution_handler)
+        
+        self.logger.info("=" * 80)
+        self.logger.info("LOGGING SYSTEM INITIALIZED")
+        self.logger.info("=" * 80)
+    
+    def _log_tool_output(self, tool_name: str, output: str):
+        """Log full tool output to separate file."""
+        try:
+            logs_dir = "logs"
+            tool_log_file = f"{logs_dir}/tool_outputs_{self.execution_id}.log"
+            
+            with open(tool_log_file, 'a', encoding='utf-8') as f:
+                f.write(f"\n{'='*80}\n")
+                f.write(f"TOOL: {tool_name.upper()}\n")
+                f.write(f"TIMESTAMP: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+                f.write(f"{'='*80}\n")
+                f.write(str(output))
+                f.write(f"\n{'='*80}\n\n")
+                
+            self.logger.info(f"Full tool output logged to: {tool_log_file}")
+        except Exception as e:
+            self.logger.error(f"Failed to log tool output: {e}")
+    
+    def _log_final_output(self, final_result: dict):
+        """Log final agent output to separate file."""
+        try:
+            logs_dir = "logs"
+            final_log_file = f"{logs_dir}/final_output_{self.execution_id}.log"
+            
+            with open(final_log_file, 'w', encoding='utf-8') as f:
+                f.write(f"FINAL AGENT OUTPUT\n")
+                f.write(f"Execution ID: {self.execution_id}\n")
+                f.write(f"Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+                f.write(f"{'='*100}\n\n")
+                
+                # Write combined result
+                if final_result.get("combined_result"):
+                    f.write("COMBINED RESULT:\n")
+                    f.write(f"{'-'*50}\n")
+                    f.write(str(final_result["combined_result"]))
+                    f.write(f"\n{'-'*50}\n\n")
+                
+                # Write execution summary
+                if final_result.get("execution_summary"):
+                    f.write("EXECUTION SUMMARY:\n")
+                    f.write(f"{'-'*50}\n")
+                    f.write(str(final_result["execution_summary"]))
+                    f.write(f"\n{'-'*50}\n\n")
+                
+                # Write state
+                if final_result.get("state"):
+                    f.write("FINAL STATE:\n")
+                    f.write(f"{'-'*50}\n")
+                    f.write(str(final_result["state"]))
+                    f.write(f"\n{'-'*50}\n")
+                
+            self.logger.info(f"Final agent output logged to: {final_log_file}")
+        except Exception as e:
+            self.logger.error(f"Failed to log final output: {e}")
     
     def _get_perplexity_service(self) -> PerplexityService:
         """Get Perplexity service instance with API key."""
@@ -60,7 +177,7 @@ class TripOptimizationAgent:
     def _get_gemini_client(self) -> genai.Client:
         """Get Google Gemini client with API key."""
         # Use the provided API key directly
-        api_key = "your api key here "
+        api_key = os.getenv('GEMINI_API_KEY')
         client = genai.Client(api_key=api_key)
         return client
     
@@ -71,11 +188,16 @@ class TripOptimizationAgent:
         Returns:
             Dict with preferences and routing order
         """
+        self.logger.info("Preference extraction started")
+        self.logger.info(f"Extracting preferences from query: '{query[:100]}...' (truncated)")
+        
         try:
             # Get Gemini client
+            self.logger.info("Connecting to Gemini API for preference extraction...")
             client = self._get_gemini_client()
             
             # Create comprehensive system prompt for Gemini
+            self.logger.info("Preparing comprehensive prompt for Gemini...")
             prompt = f"""
             TASK: Extract travel information for budget-aware trip planning and tool routing.
 
@@ -169,22 +291,22 @@ class TripOptimizationAgent:
                     'routing_order': preferences.get('routing_order', ["itinerary", "travel", "accommodation", "restaurant"])
                 }
                 
-                print(f"✅ Extracted: {validated_preferences}")
+                self.logger.info(f"Extracted: {validated_preferences}")
                 return validated_preferences
                 
             except json.JSONDecodeError as e:
-                print(f"⚠️ JSON parse error: {e}")
+                self.logger.warning(f"JSON parse error: {e}")
                 return self._basic_fallback(query)
                 
         except Exception as e:
-            print(f"⚠️ Gemini error: {e}")
+            self.logger.error(f"Gemini error: {e}")
             return self._basic_fallback(query)
     
     def _basic_fallback(self, query: str) -> Dict[str, Any]:
         """
         Basic fallback when Gemini extraction fails.
         """
-        print("🔄 Using fallback...")
+        self.logger.info("Using fallback...")
         
         query_lower = query.lower()
         
@@ -263,7 +385,7 @@ class TripOptimizationAgent:
         # Convert to absolute amounts
         budget_allocation = {tool: total_budget * percentage for tool, percentage in allocation.items()}
         
-        print(f"💰 Budget allocation based on preferences: {[f'{k}: {v:.1%}' for k, v in allocation.items()]}")
+        self.logger.info(f"💰 Budget allocation based on preferences: {[f'{k}: {v:.1%}' for k, v in allocation.items()]}")
         return budget_allocation
     
     def _get_preference_based_allocation(self, query: str, budget: float) -> Dict[str, float]:
@@ -348,11 +470,11 @@ class TripOptimizationAgent:
             total = sum(allocation.values())
             allocation = {k: v/total for k, v in allocation.items()}
             
-            print(f"🧠 Gemini-based allocation: {[f'{k}: {v:.1%}' for k, v in allocation.items()]}")
+            self.logger.info(f"🧠 Gemini-based allocation: {[f'{k}: {v:.1%}' for k, v in allocation.items()]}")
             return allocation
             
         except Exception as e:
-            print(f"⚠️ Gemini allocation failed: {e}, using default")
+            self.logger.warning(f"⚠️ Gemini allocation failed: {e}, using default")
             # Fallback to balanced default
             return {
                 'accommodation': 0.35,
@@ -431,7 +553,7 @@ class TripOptimizationAgent:
             for tool in pending_tools:
                 new_allocation[tool] = remaining_budget * pending_allocation[tool]
         
-        print(f"💰 Budget reallocation: Remaining ₹{remaining_budget:.0f} → {[f'{k}: ₹{v:.0f}' for k, v in new_allocation.items() if v > 0]}")
+        self.logger.info(f"💰 Budget reallocation: Remaining ₹{remaining_budget:.0f} → {[f'{k}: ₹{v:.0f}' for k, v in new_allocation.items() if v > 0]}")
         return new_allocation
     
     def _build_graph(self) -> StateGraph:
@@ -522,26 +644,70 @@ class TripOptimizationAgent:
             # Modify query to emphasize using the full allocated budget
             budget_aware_query = f"{original_query} Budget for {current_tool}: {currency}{allocated_budget:.0f} - Please use most of this budget to plan the best possible {current_tool} options according to user preferences."
             
+            # Log tool execution start
+            self.logger.info("=" * 60)
+            self.logger.info(f"EXECUTING TOOL: {current_tool.upper()}")
+            self.logger.info("=" * 60)
+            self.logger.info(f"Tool Name: {current_tool}")
+            self.logger.info(f"Allocated Budget: {currency}{allocated_budget:.0f}")
+            self.logger.info(f"Budget-aware Query: '{budget_aware_query[:150]}...' (truncated)")
+            
+            tool_start_time = datetime.now()
+            
             # Execute tool
             if current_tool == "accommodation":
-                result = self.tools["accommodation"].invoke({"query": budget_aware_query})
+                self.logger.info("Invoking accommodation search tool...")
+                tool_params = {"query": budget_aware_query}
+                self.logger.info(f"Tool Parameters: {tool_params}")
+                result = self.tools["accommodation"].invoke(tool_params)
             elif current_tool == "itinerary":
-                result = self.tools["itinerary"].invoke({"query": budget_aware_query})
+                self.logger.info("Invoking itinerary planning tool...")
+                tool_params = {"query": budget_aware_query}
+                self.logger.info(f"Tool Parameters: {tool_params}")
+                result = self.tools["itinerary"].invoke(tool_params)
             elif current_tool == "restaurant":
                 # Restaurant tool needs special handling - use itinerary result if available
                 itinerary_result = state.get("itinerary_result", "")
                 if itinerary_result:
+                    self.logger.info("Invoking restaurant search tool with itinerary context...")
+                    tool_params = {
+                        "itinerary_details": itinerary_result[:200] + "...(truncated)",
+                        "dates": state["dates"],
+                        "dietary_preferences": "veg and non-veg"
+                    }
+                    self.logger.info(f"Tool Parameters: {tool_params}")
                     result = self.tools["restaurant"].invoke({
                         "itinerary_details": itinerary_result,
                         "dates": state["dates"],
                         "dietary_preferences": "veg and non-veg"  # Default
                     })
                 else:
+                    self.logger.info("No itinerary available for restaurant planning")
                     result = f"No itinerary available for restaurant planning. Budget: {currency}{allocated_budget:.0f}"
             elif current_tool == "travel":
-                result = self.tools["travel"].invoke({"query": budget_aware_query})
+                self.logger.info("Invoking hybrid travel optimization tool...")
+                tool_params = {"query": budget_aware_query}
+                self.logger.info(f"Tool Parameters: {tool_params}")
+                result = self.tools["travel"].invoke(tool_params)
             else:
+                self.logger.error(f"Unknown tool: {current_tool}")
                 result = f"Unknown tool: {current_tool}"
+            
+            # Log tool execution completion
+            tool_execution_time = datetime.now() - tool_start_time
+            result_length = len(str(result)) if result else 0
+            self.logger.info(f"Tool Execution Time: {tool_execution_time.total_seconds():.2f} seconds")
+            self.logger.info(f"Tool Output Length: {result_length} characters")
+            
+            # Safely handle Unicode in result preview
+            try:
+                result_preview = str(result)[:200].encode('ascii', 'ignore').decode('ascii')
+                self.logger.info(f"Tool Output Preview: '{result_preview}...' (truncated)")
+            except Exception:
+                self.logger.info("Tool Output Preview: [Contains special characters - check full output in logs]")
+            
+            # Log full tool output to separate file
+            self._log_tool_output(current_tool, result)
             
             # Update tool result
             self.state_manager.update_tool_result(current_tool, result)
@@ -550,6 +716,10 @@ class TripOptimizationAgent:
             # If result suggests budget adjustment, add warning
             if "budget" in result.lower() and ("exceed" in result.lower() or "over" in result.lower()):
                 self.state_manager.add_warning(f"{current_tool} suggests budget adjustment needed")
+                self.logger.warning(f"Budget adjustment warning for {current_tool}")
+            
+            self.logger.info(f"TOOL {current_tool.upper()} COMPLETED SUCCESSFULLY")
+            self.logger.info("=" * 60)
             
         except Exception as e:
             error_msg = f"Error executing {current_tool}: {str(e)}"
@@ -713,22 +883,64 @@ class TripOptimizationAgent:
         Returns:
             Complete trip planning results
         """
-        # Reset state for new planning
-        reset_state()
-        self.state_manager = get_state_manager()
+        # Start execution tracking
+        self.execution_id = datetime.now().strftime('%Y%m%d_%H%M%S_%f')[:-3]
+        self.execution_start_time = datetime.now()
         
-        # Initialize state with query
-        initial_state = self.state_manager.state
-        initial_state["original_query"] = query
+        self.logger.info("=" * 100)
+        self.logger.info("STARTING NEW TRIP PLANNING EXECUTION")
+        self.logger.info("=" * 100)
+        self.logger.info(f"Execution ID: {self.execution_id}")
+        self.logger.info(f"Start Time: {self.execution_start_time.strftime('%Y-%m-%d %H:%M:%S')}")
+        self.logger.info(f"Input Query: '{query}'")
+        self.logger.info(f"Query Length: {len(query)} characters")
         
-        # Execute the graph
-        result = self.graph.invoke(initial_state)
-        
-        return {
-            "combined_result": result.get("combined_result", ""),
-            "execution_summary": result.get("execution_summary", {}),
-            "state": self.state_manager.export_state()
-        }
+        try:
+            # Reset state for new planning
+            self.logger.info("Resetting agent state for new planning session")
+            reset_state()
+            self.state_manager = get_state_manager()
+            
+            # Initialize state with query
+            initial_state = self.state_manager.state
+            initial_state["original_query"] = query
+            
+            self.logger.info("Executing trip planning graph...")
+            self.logger.info(f"Initial State Keys: {list(initial_state.keys())}")
+            
+            # Execute the graph
+            result = self.graph.invoke(initial_state)
+            
+            # Log execution completion
+            execution_time = datetime.now() - self.execution_start_time
+            self.logger.info("=" * 100)
+            self.logger.info("TRIP PLANNING EXECUTION COMPLETED")
+            self.logger.info("=" * 100)
+            self.logger.info(f"Total Execution Time: {execution_time.total_seconds():.2f} seconds")
+            self.logger.info(f"Final Result Keys: {list(result.keys()) if isinstance(result, dict) else 'Not a dict'}")
+            
+            # Log final agent output
+            final_result = {
+                "combined_result": result.get("combined_result", ""),
+                "execution_summary": result.get("execution_summary", {}),
+                "state": self.state_manager.export_state()
+            }
+            
+            self._log_final_output(final_result)
+            
+            return final_result
+            
+        except Exception as e:
+            execution_time = datetime.now() - self.execution_start_time
+            self.logger.error("TRIP PLANNING EXECUTION FAILED")
+            self.logger.error(f"Execution Time: {execution_time.total_seconds():.2f} seconds")
+            self.logger.error(f"Error: {str(e)}")
+            
+            return {
+                "error": str(e),
+                "execution_time": execution_time.total_seconds(),
+                "execution_id": self.execution_id
+            }
 
 
 # Create global agent instance
@@ -754,9 +966,9 @@ if __name__ == "__main__":
     
     # Test query with user preferences
     test_query = """
-    Plan a complete trip from Bangalore to Coorg  for 3 persons from 25-12-2025 to 30-12-2025 
+    Plan a complete trip from Bangalore to Mumbai  for 2 persons from 25-12-2025 to 27-12-2025 
     with budget rupees 25000. We prefer mountains, beaches, waterfalls, and avoid traditional experiences. 
-    We want comfortable accommodation and good food for both veg and non veg and prefer trains or buses over flights when possible.
+    We want comfortable accommodation and good food for both veg and non veg and prefer flights when possible.
     """
     
     print("🎯 Test Query:")
@@ -786,5 +998,4 @@ if __name__ == "__main__":
         
     except Exception as e:
         print(f"❌ Error in trip planning: {str(e)}")
-        import traceback
-        traceback.print_exc()
+        

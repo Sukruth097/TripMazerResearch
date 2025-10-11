@@ -84,7 +84,6 @@ def search_accommodations(query: str) -> str:
         
         ## Booking Tips
         - Book early for November dates as it's peak tourist season
-        - Consider booking directly with hotels for potential upgrades
         - Check cancellation policies for flexibility
     """
     try:
@@ -101,7 +100,7 @@ First, identify and extract these parameters from the user's natural language qu
 - Number of People: How many guests (default to 1 if not specified)
 - Budget: Budget amount with appropriate currency (see currency rules below)
 - Travel Dates: When they're traveling (extract any date mentions)
-- Preferences: Any amenities or features mentioned (wifi, pool, breakfast, etc.)
+- Preferences: Any amenities or features mentioned (wifi, pool, breakfast, 3star ,hostels,dormitory, 5 star hotels etc.)
 
 **CURRENCY DETECTION RULES:**
 - If BOTH from location AND destination are Indian regions/cities (Mumbai, Delhi, Bangalore, Chennai, Kolkata, Hyderabad, Pune, Ahmedabad, Jaipur, Surat, Lucknow, Kanpur, Nagpur, Indore, Thane, Bhopal, Visakhapatnam, Patna, Vadodara, Ghaziabad, Ludhiana, Agra, Nashik, Faridabad, Meerut, Rajkot, Kalyan, Vasai-Virar, Varanasi, Srinagar, Aurangabad, Dhanbad, Amritsar, Navi Mumbai, Allahabad, Ranchi, Howrah, Coimbatore, Jabalpur, Gwalior, Vijayawanda, Jodhpur, Madurai, Raipur, Kota, Guwahati, Chandigarh, Solapur, Hubli-Dharwad, Bareilly, Moradabad, Mysore, Gurgaon, Aligarh, Jalandhar, Tiruchirappalli, Bhubaneswar, Salem, Warangal, Mira-Bhayandar, Thiruvananthapuram, Bhiwandi, Saharanpur, Guntur, Amravati, Bikaner, Noida, Jamshedpur, Bhilai Nagar, Cuttack, Firozabad, Kochi, Bhavnagar, Dehradun, Durgapur, Asansol, Nanded-Waghala, Kolhapur, Ajmer, Akola, Gulbarga, Jamnagar, Ujjain, Loni, Siliguri, Jhansi, Ulhasnagar, Nellore, Jammu, Sangli-Miraj & Kupwad, Belgaum, Mangalore, Ambattur, Tirunelveli, Malegaon, Gaya, Jalgaon, Udaipur, Maheshtala, or any other Indian city/state): Use ₹ (Indian Rupees)
@@ -112,17 +111,17 @@ Based on the extracted requirements, search for and recommend accommodation opti
 
 **Instructions for recommendations:**
 1. Search for accommodation options that match the extracted criteria
-2. Consider hotels, vacation rentals, hostels, and other accommodation types
+2. Consider hotels, hostels/dormitory, and other accommodation types
 3. Include price ranges, amenities, and location details using the CORRECT CURRENCY
-4. Provide at least 3-5 different options with varying price points
-5. Consider any specified preferences when making recommendations
+4. Provide at max 3-4 different options with varying price points
+5. Consider all specified preferences when making recommendations
 6. Include booking tips and best practices
 7. Mention any seasonal considerations or local events that might affect pricing
 8. **BUDGET UTILIZATION**: Aim to use most of the available budget to recommend the best possible accommodations within user preferences
 8. **IMPORTANT**: Use the correct currency symbol (₹ for India, $ for international) throughout all pricing
 
 **Response Format (MANDATORY):**
-Start with a clear extraction summary, then provide detailed recommendations:
+Start with a clear extraction summary, then provide recommendations in table format for easy comparison:
 
 # Accommodation Search Results
 
@@ -138,31 +137,49 @@ Start with a clear extraction summary, then provide detailed recommendations:
 
 ## Recommended Accommodations
 
-### 1. [Hotel/Property Name]
-- **Type:** [Hotel/Hostel/Apartment/etc.]
-- **Price Range:** $[price] per night
-- **Location:** [area/district]
-- **Amenities:** 
-  - [list relevant amenities]
-- **Booking:** [platform suggestions]
-- **Why recommended:** [brief explanation]
+| # | Property Name | Type | Price/Night/Person | Location | Coordinates | Key Amenities | Booking Links |
+|---|---------------|------|-------------------|----------|-------------|---------------|---------------|
+| 1 | [Hotel Name] | Hotel/Hostel | ₹[price] per person | [Area/District] | [Lat, Long] | WiFi, Breakfast, Pool | [Booking.com](https://booking.com) • [Agoda](https://agoda.com) |
+| 2 | [Hotel Name] | Apartment | ₹[price] per person | [Area/District] | [Lat, Long] | Kitchen, WiFi, AC | [Airbnb](https://airbnb.com) • [MakeMyTrip](https://makemytrip.com) |
+| 3 | [Hotel Name] | Hostel | ₹[price] per person | [Area/District] | [Lat, Long] | Dorm, WiFi, Common Area | [Hostelworld](https://hostelworld.com) • [Goibibo](https://goibibo.com) |
 
-### 2. [Next option...]
-[Continue with similar format]
-
-## Summary & Top Recommendation
-[Provide your top recommendation with reasoning]
+### Additional Information
+**Budget Option:** Brief note on value for money option with any trade-offs.
+**Luxury Option:** Brief note on premium choice and why it's worth the extra cost.
+**Seasonal Notes:** December is peak season - book early for better rates and availability.
 
 ## Booking Tips
-[Include relevant booking advice, seasonal considerations, etc.]
+Book early for peak season/holidays for better rates. All guests need valid ID at check-in.
 
-Please provide current, accurate information with specific details about availability and pricing where possible."""
+Always provide current, accurate information with specific details about availability and pricing where possible.
+
+**CRITICAL INSTRUCTIONS FOR COORDINATES AND BOOKING LINKS:**
+1. Include GPS coordinates (latitude, longitude) for each property in decimal format (e.g., 28.6139, 77.2090)
+2. Coordinates help users navigate and check exact locations on maps
+3. In Booking Links column, include multiple real booking platforms separated by • symbol
+4. Try to provide actual hotel booking links when possible (Booking.com, Agoda, Airbnb, Hotels.com, etc.)
+5. Format as [Platform Name](URL) for proper markdown rendering
+6. Popular platforms: Booking.com, Agoda, Hotels.com, Expedia, Airbnb, MakeMyTrip, Goibibo, Hostelworld
+7. Include official hotel websites when available
+8. Ensure links are current and functional
+
+**CRITICAL PRICING INSTRUCTIONS:**
+- ALWAYS calculate and show price per night per person
+- If hotel room accommodates multiple guests, divide total room price by number of guests
+- For example: If room costs ₹3,000/night for 3 people, show ₹1,000 per person
+- For dormitory/hostel beds, show individual bed price
+- Make pricing calculations clear and accurate for the specified number of guests
+
+**EXAMPLE FORMAT:**
+- Coordinates column: 28.6139, 77.2090 (decimal degrees format)
+- Price column: ₹1,500 per person (if room for 3 people costs ₹4,500 total)
+- Booking Links: [Booking.com](https://booking.com/hotel/link) • [Agoda](https://agoda.com/hotel/link)"""
 
         # Search using Perplexity with the combined extraction and recommendation prompt
         results = perplexity_service.search(
             query=query,
             system_prompt=system_prompt,
-            temperature=0.1
+            temperature=0
         )
         
         # Return results directly since the system prompt handles formatting
@@ -176,14 +193,13 @@ Please provide current, accurate information with specific details about availab
 
 
 if __name__ == "__main__":
-    # Test query with all mandatory parameters
     test_query = """
     I need accommodation in bangalore to Delhi  for 3 people 
     from 15-12-2025 to 22-12-2025 with a budget of 30000 rupees overall. 
     I prefer hotels with wifi, breakfast included, and near to transport.
     """
     
-    print("🏨 Testing Accommodation Planner...")
+    print("Testing Accommodation Planner...")
     print(f"\nQuery: {test_query.strip()}")
     print("\n" + "="*60)
     print("ACCOMMODATION SEARCH RESULTS")
@@ -194,7 +210,7 @@ if __name__ == "__main__":
         result = search_accommodations.invoke({"query": test_query})
         print(result)
         print("\n" + "="*60)
-        print("✅ Test completed successfully!")
+        print("Test completed successfully!")
     except Exception as e:
         print(f"❌ Error occurred: {str(e)}")
         print("\nTroubleshooting:")

@@ -290,6 +290,42 @@ async def optimize_travel_tool(request: ToolRequest):
             detail=create_error_response(error_msg)
         )
 
+@app.post("/tools/travel_hybrid")
+async def optimize_travel_hybrid(request: ToolRequest):
+    """
+    Hybrid travel optimization using SerpAPI for flights and Perplexity for other transport.
+    
+    This endpoint uses intelligent routing to:
+    - Extract flight parameters using Gemini AI
+    - Decide whether to search flights based on budget and preferences
+    - Use SerpAPI for accurate flight pricing when appropriate
+    - Use Perplexity for comprehensive bus/train options
+    - Combine results for optimal travel recommendations
+    """
+    logger.info(f"Hybrid travel optimization requested: {request.query[:100]}...")
+    
+    try:
+        @measure_execution_time
+        def execute_hybrid_optimization():
+            return trip_agent.process_trip_optimization(request.query)
+        
+        result, execution_time = execute_hybrid_optimization()
+        
+        logger.info(f"Hybrid travel optimization completed in {execution_time:.2f}ms")
+        return create_success_response({
+            "tool": "travel_hybrid",
+            "result": result,
+            "note": "Results combine SerpAPI flight data with Perplexity transport options"
+        }, execution_time)
+        
+    except Exception as e:
+        error_msg = f"Error in hybrid travel optimization: {str(e)}"
+        logger.error(error_msg, exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=create_error_response(error_msg)
+        )
+
 # Agent information endpoint
 @app.get("/agent/info")
 async def get_agent_info():

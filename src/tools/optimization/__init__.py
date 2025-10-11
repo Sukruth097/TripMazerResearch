@@ -16,14 +16,14 @@ and provide comprehensive markdown outputs with Google Maps integration.
 from .AccomidationPlanner import search_accommodations
 from .IternaryPlanning import plan_itinerary
 from .RestaurantsSearch import search_restaurants
-from .TravelOptimization import optimize_travel
+from .TravelOptimization import hybrid_travel_optimization
 
 # Export all tools for easy importing
 __all__ = [
     "search_accommodations",
     "plan_itinerary", 
     "search_restaurants",
-    "optimize_travel"
+    "hybrid_travel_optimization"
 ]
 
 # Tool descriptions for documentation
@@ -49,11 +49,12 @@ TOOL_DESCRIPTIONS = {
         "example": "Search restaurants for Tokyo itinerary with veg and non-veg preferences"
     },
     
-    "optimize_travel": {
-        "description": "Optimize transportation routes, modes, and costs",
-        "input": "Natural language query with from/to locations, dates, budget, transport preferences",
-        "output": "Transportation options table with cost analysis and booking recommendations",
-        "example": "Optimize travel from Mumbai to Goa for 4 people, prefer trains, budget ₹8000"
+    "hybrid_travel_optimization": {
+        "description": "Advanced travel optimization with SERP API flights + Perplexity ground transport",
+        "input": "Natural language query with travel details, automatically decides flight vs ground transport",
+        "output": "Smart transportation recommendations with real flight pricing and comprehensive options",
+        "example": "Plan trip from Delhi to Bangalore for 2 people, budget ₹30000, prefer flights",
+        "features": ["SERP API flight pricing", "Gemini natural language understanding", "Budget-aware decisions", "Clean output"]
     }
 }
 
@@ -133,7 +134,7 @@ def plan_complete_trip(
         # Step 3: Optimize travel
         if travel_optimization_query:
             print("🚌 Optimizing travel...")
-            travel_result = optimize_travel.invoke({"query": travel_optimization_query})
+            travel_result = hybrid_travel_optimization.invoke({"query": travel_optimization_query})
             results['travel'] = travel_result
             
         print("✅ Complete trip planning finished!")

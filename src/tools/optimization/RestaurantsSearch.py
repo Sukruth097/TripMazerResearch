@@ -2,7 +2,10 @@ import os
 import sys
 import json
 from typing import Dict, Any
+from dotenv import load_dotenv
 
+# Load environment variables from .env file
+load_dotenv()
 # Add the src directory to Python path when running directly
 if __name__ == "__main__":
     sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
