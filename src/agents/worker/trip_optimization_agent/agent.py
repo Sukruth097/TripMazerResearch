@@ -239,10 +239,10 @@ class TripOptimizationAgent:
             - Transport concerns ("prefer trains", "flight booking", "travel options") → travel first
 
             Tools available:
-            - "accommodation": hotels, stays, lodging (35% budget allocation)
+            - "accommodation": hotels, stays, lodging (30% budget allocation)
             - "itinerary": activities, sightseeing, experiences (20% budget allocation)
-            - "restaurant": food, dining, meals (15% budget allocation)  
-            - "travel": transport, flights, trains, buses (30% budget allocation)
+            - "restaurant": food, dining, meals (25% budget allocation)  
+            - "travel": transport, flights, trains, buses (25% budget allocation)
 
             EXAMPLES:
 
@@ -419,21 +419,27 @@ class TripOptimizationAgent:
 
             ALLOCATION GUIDELINES:
             - Total must equal 100% (1.0)
-            - Minimum 5% (0.05) per category
+            - Minimum 10% (0.10) for restaurant (realistic food budget)
+            - Minimum 5% (0.05) for other categories  
             - Maximum 50% (0.50) per category
             - Consider user emphasis, budget level, and trip type
+            - **RESTAURANT BUDGET REALITY CHECK**: Ensure restaurant allocation provides at least ₹500-800 per person per day for meals
 
             CONTEXT UNDERSTANDING:
             - Luxury emphasis → higher accommodation %
-            - Food/culinary focus → higher restaurant %
+            - Food/culinary focus → higher restaurant % (30-40%)
             - Adventure/sightseeing → higher itinerary %
             - Long distance/transport concerns → higher travel %
-            - Budget conscious → optimize for value across categories
-            - Family trips → balanced allocation with accommodation focus
-            - Business trips → accommodation and travel focus
+            - Budget conscious → optimize for value, but maintain realistic food budget (min 20%)
+            - Family trips → balanced allocation with accommodation focus, adequate food budget
+            - Business trips → accommodation and travel focus, professional dining budget
+
+            REALISTIC EXAMPLES:
+            - Budget ₹25,000 for 2 people, 3 days → restaurant should get 25-30% (₹6,250-7,500)
+            - Budget ₹50,000 for family → restaurant should get 20-25% (₹10,000-12,500)
 
             Return ONLY JSON with decimal percentages:
-            {{"accommodation": 0.35, "itinerary": 0.20, "travel": 0.30, "restaurant": 0.15}}
+            {{"accommodation": 0.30, "itinerary": 0.20, "travel": 0.25, "restaurant": 0.25}}
             """
             
             # Use Gemini for intelligent allocation
@@ -459,12 +465,18 @@ class TripOptimizationAgent:
                 # Normalize to 100%
                 allocation = {k: v/total for k, v in allocation.items()}
             
-            # Ensure minimums
-            for tool in ['accommodation', 'itinerary', 'travel', 'restaurant']:
+            # Ensure minimums - restaurant needs higher minimum for realistic meals
+            for tool in ['accommodation', 'itinerary', 'travel']:
                 if tool not in allocation:
                     allocation[tool] = 0.05
                 elif allocation[tool] < 0.05:
                     allocation[tool] = 0.05
+            
+            # Restaurant needs higher minimum for realistic meal costs
+            if 'restaurant' not in allocation:
+                allocation['restaurant'] = 0.10
+            elif allocation['restaurant'] < 0.10:
+                allocation['restaurant'] = 0.10
             
             # Re-normalize after minimum adjustments
             total = sum(allocation.values())
@@ -475,12 +487,12 @@ class TripOptimizationAgent:
             
         except Exception as e:
             self.logger.warning(f"⚠️ Gemini allocation failed: {e}, using default")
-            # Fallback to balanced default
+            # Fallback to balanced default with realistic restaurant allocation
             return {
-                'accommodation': 0.35,
+                'accommodation': 0.30,
                 'itinerary': 0.20, 
-                'travel': 0.30,
-                'restaurant': 0.15
+                'travel': 0.25,
+                'restaurant': 0.25
             }
     
     def _reallocate_remaining_budget(self, state: TripState, completed_tools: List[str]) -> Dict[str, float]:
@@ -670,16 +682,38 @@ class TripOptimizationAgent:
                 itinerary_result = state.get("itinerary_result", "")
                 if itinerary_result:
                     self.logger.info("Invoking restaurant search tool with itinerary context...")
+                    
+                    # Extract travelers and dates for budget calculation
+                    travelers = state.get("travelers", 2)
+                    dates_str = state.get("dates", "")
+                    
+                    # Calculate days from dates
+                    try:
+                        if " to " in dates_str:
+                            start_date_str, end_date_str = dates_str.split(" to ")
+                            start_date = datetime.strptime(start_date_str.strip(), "%d-%m-%Y")
+                            end_date = datetime.strptime(end_date_str.strip(), "%d-%m-%Y")
+                            num_days = (end_date - start_date).days + 1
+                        else:
+                            num_days = 3  # Default fallback
+                    except:
+                        num_days = 3  # Fallback on parsing error
+                    
+                    # Create budget hint for restaurant recommendations
+                    budget_hint = f"{currency}{allocated_budget:.0f} for {travelers} person{'s' if travelers > 1 else ''} for {num_days} days"
+                    
                     tool_params = {
                         "itinerary_details": itinerary_result[:200] + "...(truncated)",
                         "dates": state["dates"],
-                        "dietary_preferences": "veg and non-veg"
+                        "dietary_preferences": "veg and non-veg",
+                        "budget_hint": budget_hint
                     }
                     self.logger.info(f"Tool Parameters: {tool_params}")
                     result = self.tools["restaurant"].invoke({
                         "itinerary_details": itinerary_result,
                         "dates": state["dates"],
-                        "dietary_preferences": "veg and non-veg"  # Default
+                        "dietary_preferences": "veg and non-veg",  # Default
+                        "budget_hint": budget_hint
                     })
                 else:
                     self.logger.info("No itinerary available for restaurant planning")

@@ -22,20 +22,21 @@ def _get_perplexity_service() -> PerplexityService:
         raise ValueError("PERPLEXITY_API_KEY environment variable is required")
     return PerplexityService(api_key)
 @tool
-def search_restaurants(itinerary_details: str, dates: str, dietary_preferences: str = "") -> str:
+def search_restaurants(itinerary_details: str, dates: str, dietary_preferences: str = "", budget_hint: str = "") -> str:
     """
     Search for restaurants based on itinerary details and dietary preferences.
     
     This tool analyzes an itinerary plan and suggests restaurants for each location and time,
-    considering dietary preferences and local cuisine options.
+    considering dietary preferences, budget constraints, and local cuisine options.
     
     Args:
         itinerary_details: Complete itinerary in JSON/Markdown format from itinerary planner
         dates: Travel dates in DD-MM-YYYY to DD-MM-YYYY format
         dietary_preferences: Dietary preferences like "veg only", "veg and non-veg", "non-veg only", etc.
+        budget_hint: Optional budget guidance like "₹6250 for 2 people for 3 days" to suggest appropriate price ranges
     
     Returns:
-        str: Restaurant recommendations in markdown table format
+        str: Restaurant recommendations in markdown table format with realistic pricing
     
     Example:
         >>> itinerary = "Day 1 - Tokyo: Visit Senso-ji Temple (9:00 AM), Nakamise Shopping (12:00 PM)"
@@ -74,6 +75,13 @@ def search_restaurants(itinerary_details: str, dates: str, dietary_preferences: 
 - Itinerary Details: {itinerary_details}
 - Travel Dates: {dates}
 - Dietary Preferences: {dietary_preferences if dietary_preferences else "No specific preferences mentioned"}
+- Budget Guidance: {budget_hint if budget_hint else "No specific budget mentioned - suggest varied price ranges"}
+
+**BUDGET CONSIDERATIONS:**
+- If budget is provided, calculate realistic per-person per-meal costs
+- For Indian destinations: Budget restaurants ₹150-300, Mid-range ₹300-800, Fine dining ₹800-2000 per person
+- For international destinations: Budget $10-25, Mid-range $25-60, Fine dining $60-150 per person
+- If budget seems insufficient, suggest budget-friendly options but mention realistic alternatives
 
 **CURRENCY DETECTION RULES:**
 - If locations in the itinerary are Indian regions/cities (Mumbai, Delhi, Bangalore, Chennai, Kolkata, Hyderabad, Pune, Ahmedabad, Jaipur, Surat, Lucknow, Kanpur, Nagpur, Indore, Thane, Bhopal, Visakhapatnam, Patna, Vadodara, Ghaziabad, Ludhiana, Agra, Nashik, Faridabad, Meerut, Rajkot, Kalyan, Vasai-Virar, Varanasi, Srinagar, Aurangabad, Dhanbad, Amritsar, Navi Mumbai, Allahabad, Ranchi, Howrah, Coimbatore, Jabalpur, Gwalior, Vijayawanda, Jodhpur, Madurai, Raipur, Kota, Guwahati, Chandigarh, Solapur, Hubli-Dharwad, Bareilly, Moradabad, Mysore, Gurgaon, Aligarh, Jalandhar, Tiruchirappalli, Bhubaneswar, Salem, Warangal, Mira-Bhayandar, Thiruvananthapuram, Bhiwandi, Saharanpur, Guntur, Amravati, Bikaner, Noida, Jamshedpur, Bhilai Nagar, Cuttack, Firozabad, Kochi, Bhavnagar, Dehradun, Durgapur, Asansol, Nanded-Waghala, Kolhapur, Ajmer, Akola, Gulbarga, Jamnagar, Ujjain, Loni, Siliguri, Jhansi, Ulhasnagar, Nellore, Jammu, Sangli-Miraj & Kupwad, Belgaum, Mangalore, Ambattur, Tirunelveli, Malegaon, Gaya, Jalgaon, Udaipur, Maheshtala, or any other Indian city/state): Use ₹ (Indian Rupees)
@@ -92,9 +100,9 @@ def search_restaurants(itinerary_details: str, dates: str, dietary_preferences: 
 4. Match restaurant proximity to itinerary locations
 5. Respect dietary preferences strictly
 6. Include local cuisine specialties
-7. Provide realistic price ranges in correct currency
+7. Provide realistic price ranges in correct currency (consider ₹800-1500 per person per day for decent meals in India)
 8. Add Google Maps links as clickable restaurant names
-9. **BUDGET UTILIZATION**: Recommend restaurants that make good use of the available budget while respecting dietary preferences and user tastes
+9. **BUDGET UTILIZATION**: Recommend restaurants that make good use of the available budget while respecting dietary preferences and user tastes. If budget seems low, suggest budget-friendly options but mention realistic alternatives.
 
 **RESPONSE FORMAT (MANDATORY):**
 
