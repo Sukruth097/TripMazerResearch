@@ -16,13 +16,14 @@ and provide comprehensive markdown outputs with Google Maps integration.
 from .AccomidationPlanner import search_accommodations
 from .IternaryPlanning import plan_itinerary
 from .RestaurantsSearch import search_restaurants
-from .TravelOptimization import hybrid_travel_optimization
+from .TravelOptimization import optimize_travel, hybrid_travel_optimization
 
 # Export all tools for easy importing
 __all__ = [
     "search_accommodations",
     "plan_itinerary", 
     "search_restaurants",
+    "optimize_travel",
     "hybrid_travel_optimization"
 ]
 

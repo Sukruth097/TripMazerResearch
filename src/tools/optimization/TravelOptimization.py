@@ -10,9 +10,26 @@ load_dotenv()
 if __name__ == "__main__":
     sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
 
+# Add parent directories to path for proper importing
+current_dir = os.path.dirname(os.path.abspath(__file__))
+src_dir = os.path.join(current_dir, '..', '..')
+sys.path.insert(0, src_dir)
+
 from langchain.tools import tool
-from src.services.perplexity_service import PerplexityService
-from src.services.serp_api_service import SerpAPIService
+
+# Handle relative imports for both direct execution and when imported from main.py
+try:
+    from src.services.perplexity_service import PerplexityService
+    from src.services.serp_api_service import SerpAPIService
+except ImportError:
+    try:
+        from services.perplexity_service import PerplexityService
+        from services.serp_api_service import SerpAPIService
+    except ImportError:
+        # If still failing, try absolute path
+        sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
+        from services.perplexity_service import PerplexityService
+        from services.serp_api_service import SerpAPIService
 
 
 def _search_buses_with_serp(bus_params: Dict[str, Any]) -> str:
