@@ -3,7 +3,132 @@
 ## 🌟 Overview
 TripMazer is an advanced AI-powered trip planning system that uses multi-agent architecture with LangGraph to intelligently optimize travel itineraries, budgets, and recommendations. The system employs LLM-based preference extraction and intelligent routing to provide comprehensive travel planning solutions.
 
-## 🚀 Quick Start
+## **Streamlit Web Application**
+
+### **Quick Start - Running the Application**
+
+The primary way to use TripMazer is through our **dark-themed Streamlit web interface** with green terminal-style output:
+
+#### **Features:**
+- **🎯 Complete Trip Planning**: Multi-transport search with real-time cost comparison
+- **🏨 Smart Accommodations**: AI-powered hotel recommendations
+- **🍽️ Restaurant Discovery**: Dining suggestions based on your itinerary
+- **🗺️ Intelligent Itinerary**: Detailed day-by-day trip planning
+- **💬 AI Chat Assistant**: Comprehensive trip planning with multi-agent system
+- **🌚 Dark Theme**: Black background with green text for better visibility
+
+### 📋 **Setup Instructions**
+
+#### **1. Clone the Repository**
+```bash
+git clone https://github.com/Sukruth097/TripMazerResearch.git
+cd TripMazerResearch
+```
+
+#### **2. Install Dependencies**
+```bash
+pip install -r src/requirements.txt
+```
+
+#### **3. Configure Environment Variables**
+Create a `.env` file in the `src` directory:
+```bash
+# Copy the template
+cp .env.template src/.env
+```
+
+Edit `src/.env` with your API keys:
+```env
+# Required API Keys
+PERPLEXITY_API_KEY=your_perplexity_api_key_here
+GEMINI_API_KEY=your_gemini_api_key_here  
+SERP_API_KEY=your_serp_api_key_here
+
+# Optional Azure Configuration
+AZURE_STORAGE_CONNECTION_STRING=your_azure_storage_connection_string_here
+AZURE_KEY_VAULT_URL=your_azure_key_vault_url_here
+```
+
+#### **4. Run the Application**
+```bash
+cd src
+streamlit run main.py
+```
+
+#### **5. Access the Application**
+Open your browser and go to: **http://localhost:8501**
+
+### 🔑 **Getting API Keys**
+
+#### **Perplexity AI** (For restaurant and accommodation search)
+1. Sign up at: https://www.perplexity.ai/
+2. Get API key from your dashboard  
+3. Add to `.env` as `PERPLEXITY_API_KEY`
+
+#### **Google Gemini** (For natural language processing)
+1. Get API key from: https://makersuite.google.com/app/apikey
+2. Add to `.env` as `GEMINI_API_KEY`
+
+#### **SerpAPI** (For flights and bus search)
+1. Sign up at: https://serpapi.com/
+2. Get API key from your dashboard
+3. Add to `.env` as `SERP_API_KEY`
+
+### 🎮 **How to Use the Application**
+
+#### **Method 1: Individual Planning Tools**
+1. **🎯 Trip Planning** → Enter source, destination, dates, budget
+2. **🏨 Accommodations** → Get personalized hotel options  
+3. **🍽️ Restaurants** → Find dining based on itinerary or manual search
+4. **🗺️ Itinerary** → Create detailed day-by-day plans
+
+#### **Method 2: AI Chat Assistant (Recommended)**
+1. Go to **💬 Chat Assistant** section
+2. Ask for comprehensive trip planning like:
+   ```
+   Plan a trip for 3 people of budget 50000 INR from Bangalore to Mumbai 
+   on 27-11-25 to 30-11-25, we prefer flights over trains and we like 
+   beaches and early sunrise view points, plan itinerary accordingly
+   ```
+3. The AI agent will automatically:
+   - Extract your preferences using Gemini AI
+   - Allocate budget intelligently across tools
+   - Execute itinerary → travel → accommodation → restaurant planning
+   - Combine results into a comprehensive trip report
+
+#### **Sample Queries for Chat Assistant:**
+```bash
+# Family Trip
+"Plan a family trip for 4 people from Delhi to Goa with budget 80000 INR from 15-12-2025 to 20-12-2025, we prefer comfortable stays and good food"
+
+# Adventure Trip  
+"Plan an adventure trip for 2 people from Mumbai to Manali with budget 45000 INR, we love trekking and mountain views"
+
+# Business Trip
+"Plan a business trip from Bangalore to Chennai for 1 person with budget 25000 INR for 2 days, need good hotels near the airport"
+```
+
+### 🎨 **User Interface**
+
+#### **Dark Theme Features:**
+- **🖤 Black background** throughout the application
+- **🟢 Green text** for all content, headers, and results  
+- **🟢 Green-bordered inputs** and interactive elements
+- **🌈 Color-coded messages**:
+  - 🟢 Success messages (green)
+  - 🔵 Info messages (cyan)  
+  - 🟡 Warning messages (yellow)
+  - 🔴 Error messages (red)
+
+#### **Navigation:**
+- **Sidebar navigation** for easy section switching
+- **Responsive design** that works on desktop and mobile
+- **Progress indicators** during AI processing
+- **Session state management** to preserve data between sections
+
+---
+
+## 🚀 Advanced Usage (CLI/Original)
 
 ### Prerequisites
 - Python 3.9+ installed on your system
@@ -323,6 +448,116 @@ python src/tools/optimization/TravelOptimization.py
 ### Project Structure
 ```
 TripMazerResearch/
+├── README.md                           # This documentation
+├── .env.template                       # Environment variables template
+├── src/
+│   ├── main.py                         # 🎯 Main Streamlit Application
+│   ├── requirements.txt                # Python dependencies
+│   ├── .env                           # Your API keys (create from template)
+│   ├── agents/
+│   │   └── worker/
+│   │       └── trip_optimization_agent/
+│   │           └── agent.py           # 🤖 Main AI agent orchestrator
+│   ├── tools/
+│   │   └── optimization/
+│   │       ├── TravelOptimization.py  # 🚌 Transport optimization
+│   │       ├── AccomidationPlanner.py # 🏨 Hotel/stay search
+│   │       ├── RestaurantsSearch.py   # 🍽️ Dining recommendations
+│   │       └── IternaryPlanning.py    # 🗺️ Day-by-day planning
+│   ├── services/
+│   │   ├── perplexity_service.py      # 🔍 Perplexity AI service
+│   │   └── serp_api_service.py        # ✈️ Flight/bus search service
+│   ├── state/
+│   │   └── state_manager.py           # 📊 State tracking system
+│   └── utils/
+│       └── common.py                  # 🛠️ Utility functions
+├── database/
+│   └── schemas/                       # Database schemas
+├── Documentation/
+└── images/                           # Screenshot examples
+```
+
+## 🔧 **Troubleshooting**
+
+### **Common Issues and Solutions**
+
+#### **1. Application Shows White/Blank Screen**
+```bash
+# Solution 1: Hard refresh browser
+Ctrl+F5 (Windows) or Cmd+Shift+R (Mac)
+
+# Solution 2: Clear browser cache and try different browser
+
+# Solution 3: Check if Streamlit is running
+# You should see: "You can now view your Streamlit app in your browser."
+```
+
+#### **2. Import Errors**
+```bash
+# Error: ModuleNotFoundError
+# Solution: Install dependencies
+pip install -r src/requirements.txt
+
+# Error: "No module named 'src'"
+# Solution: Make sure you're in the correct directory
+cd TripMazerResearch/src
+streamlit run main.py
+```
+
+#### **3. API Key Errors**
+```bash
+# Error: "API key not found" or "Authentication failed"
+# Solution: Check your .env file in src directory
+
+# Make sure file is named exactly: .env (not .env.txt)
+# Verify API keys are correctly formatted:
+PERPLEXITY_API_KEY=your_actual_key_here
+GEMINI_API_KEY=your_actual_key_here
+SERP_API_KEY=your_actual_key_here
+```
+
+#### **4. AI Agent Not Working**
+```bash
+# Error: "Agent Import Error" or "Limited Mode"
+# Solution 1: Check all API keys are set correctly
+# Solution 2: Verify internet connection
+# Solution 3: Check API quotas haven't been exceeded
+
+# You can still use individual planning tools if agent fails
+```
+
+#### **5. Dark Theme Not Showing**
+```bash
+# Solution: The app uses CSS injection
+# Try refreshing the page or restarting Streamlit
+cd src
+streamlit run main.py
+```
+
+### **Getting Help**
+
+#### **Debug Information**
+1. Enable "Show Debug Info" checkbox in the app
+2. Check browser Developer Tools (F12) for console errors
+3. Look for error messages in the terminal where Streamlit is running
+
+#### **Test Your Setup**
+```bash
+# Quick test - should show green text on black background
+cd src
+python -c "print('✅ Python working'); import streamlit; print('✅ Streamlit installed')"
+```
+
+#### **Check API Keys**
+```bash
+# Test if your .env file is readable
+cd src
+python -c "from dotenv import load_dotenv; import os; load_dotenv(); print('Perplexity:', 'SET' if os.getenv('PERPLEXITY_API_KEY') else 'NOT SET')"
+```
+
+---
+
+## 📊 Example Usage
 ├── README.md
 ├── src/
 │   ├── requirements.txt
@@ -417,12 +652,46 @@ We want comfortable accommodation and prefer trains over flights when possible.
 
 ---
 
+## ⚡ **Quick Reference Commands**
+
+### **Run the Application**
+```bash
+cd TripMazerResearch/src
+streamlit run main.py
+# Then open: http://localhost:8501
+```
+
+### **Setup from Scratch**
+```bash
+git clone https://github.com/Sukruth097/TripMazerResearch.git
+cd TripMazerResearch
+pip install -r src/requirements.txt
+cp .env.template src/.env
+# Edit src/.env with your API keys
+cd src && streamlit run main.py
+```
+
+### **Troubleshooting**
+```bash
+# Check if everything is installed
+cd src && python -c "import streamlit; print('✅ Ready')"
+
+# Test API keys
+python -c "from dotenv import load_dotenv; import os; load_dotenv(); print('Keys:', bool(os.getenv('PERPLEXITY_API_KEY')))"
+
+# Force restart Streamlit
+pkill -f streamlit
+cd src && streamlit run main.py
+```
+
+---
+
 ## 🤝 Contributing
 1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests if applicable
-5. Submit a pull request
+2. Create a feature branch: `git checkout -b feature/AmazingFeature`
+3. Commit your changes: `git commit -m 'Add some AmazingFeature'`
+4. Push to the branch: `git push origin feature/AmazingFeature`
+5. Open a Pull Request
 
 ---
 
@@ -432,8 +701,31 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 ---
 
 ## 📞 Support
-For questions or support, please open an issue in the GitHub repository or contact the development team.
+
+### **Getting Help**
+- 🐛 **Issues**: Open an issue on GitHub for bugs or feature requests
+- 💬 **Discussions**: Use GitHub Discussions for questions and community support
+- 📧 **Contact**: Reach out to the development team for direct support
+
+### **Resources**
+- 📖 **Documentation**: This README contains comprehensive setup and usage instructions
+- 🎥 **Examples**: Check the `/images` folder for screenshots and examples
+- 🔧 **Troubleshooting**: See the troubleshooting section above for common issues
 
 ---
 
-**Built with ❤️ using LangGraph, LangChain, and Perplexity AI**
+## 🎉 **What's New in This Version**
+
+- ✅ **Streamlit Web Interface** with dark theme and green terminal-style output
+- ✅ **Comprehensive AI Chat Assistant** using multi-agent system
+- ✅ **Individual Planning Tools** for step-by-step trip planning
+- ✅ **Real-time Cost Comparison** across flights, trains, and buses
+- ✅ **Budget-Aware Planning** with intelligent allocation
+- ✅ **Session State Management** for seamless user experience
+- ✅ **Mobile-Responsive Design** that works on all devices
+
+---
+
+**🌍 Built with ❤️ for travelers around the world**
+
+**TripMazer - Your Intelligent AI Travel Companion** ✈️🤖
