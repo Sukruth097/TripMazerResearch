@@ -22,10 +22,14 @@ from src.tools.optimization import (
 )
 
 # Import state manager
-from src.state.state_manager import TripState, get_state_manager, reset_state
+from src.state.state_manager import get_state_manager, reset_state
 
 # Import Google Gemini for LLM processing
-from google import genai
+try:
+    from google import genai
+except ImportError:
+    genai = None
+
 from src.services.perplexity_service import PerplexityService
 load_dotenv()
 
@@ -174,8 +178,11 @@ class TripOptimizationAgent:
             raise ValueError("PERPLEXITY_API_KEY environment variable is required")
         return PerplexityService(api_key)
     
-    def _get_gemini_client(self) -> genai.Client:
+    def _get_gemini_client(self):
         """Get Google Gemini client with API key."""
+        if genai is None:
+            raise ImportError("google-genai package not available")
+            
         # Use the provided API key directly
         api_key = os.getenv('GEMINI_API_KEY')
         client = genai.Client(api_key=api_key)
@@ -495,7 +502,7 @@ class TripOptimizationAgent:
                 'restaurant': 0.25
             }
     
-    def _reallocate_remaining_budget(self, state: TripState, completed_tools: List[str]) -> Dict[str, float]:
+    def _reallocate_remaining_budget(self, state: Dict[str, Any], completed_tools: List[str]) -> Dict[str, float]:
         """
         Dynamically reallocate remaining budget after tools complete.
         
@@ -572,7 +579,7 @@ class TripOptimizationAgent:
         """Build the LangGraph workflow."""
         
         # Define the workflow
-        workflow = StateGraph(TripState)
+        workflow = StateGraph(Dict[str, Any])
         
         # Add nodes
         workflow.add_node("input_processor", self._process_input)
@@ -603,7 +610,7 @@ class TripOptimizationAgent:
         
         return workflow.compile()
     
-    def _process_input(self, state: TripState) -> TripState:
+    def _process_input(self, state: Dict[str, Any]) -> Dict[str, Any]:
         """Process input query and extract preferences."""
         query = state["original_query"]
         preferences = self._extract_preferences_and_routing(query)
@@ -612,10 +619,11 @@ class TripOptimizationAgent:
         preferences['original_query'] = query
         
         # Update state with extracted information
+        budget = preferences.get('budget') or 30000  # Default budget if None or not found
         self.state_manager.update_input_info(
             query=query,
             preferences=preferences,
-            budget=preferences.get('budget', 10000),  # Default budget
+            budget=budget,
             currency=preferences.get('currency', '$'),
             dates=preferences.get('dates', 'Not specified'),
             from_loc=preferences.get('from_location', 'Not specified'),
@@ -628,7 +636,7 @@ class TripOptimizationAgent:
         
         return self.state_manager.state
     
-    def _allocate_budget_node(self, state: TripState) -> TripState:
+    def _allocate_budget_node(self, state: Dict[str, Any]) -> Dict[str, Any]:
         """Allocate budget across tools."""
         total_budget = state["total_budget"]
         preferences = state["user_preferences"]
@@ -638,7 +646,7 @@ class TripOptimizationAgent:
         
         return self.state_manager.state
     
-    def _execute_current_tool(self, state: TripState) -> TripState:
+    def _execute_current_tool(self, state: Dict[str, Any]) -> Dict[str, Any]:
         """Execute the current tool in sequence."""
         current_tool = self.state_manager.get_current_tool()
         
@@ -765,7 +773,7 @@ class TripOptimizationAgent:
         
         return self.state_manager.state
     
-    def _track_budget(self, state: TripState) -> TripState:
+    def _track_budget(self, state: Dict[str, Any]) -> Dict[str, Any]:
         """Track budget usage and dynamically reallocate remaining budget."""
         current_tool = self.state_manager.get_current_tool()
         
@@ -797,14 +805,14 @@ class TripOptimizationAgent:
         
         return self.state_manager.state
     
-    def _should_continue(self, state: TripState) -> str:
+    def _should_continue(self, state: Dict[str, Any]) -> str:
         """Decide whether to continue with next tool or combine results."""
         if self.state_manager.is_execution_complete():
             return "combine"
         else:
             return "continue"
     
-    def _combine_results(self, state: TripState) -> TripState:
+    def _combine_results(self, state: Dict[str, Any]) -> Dict[str, Any]:
         """Combine all tool results into a comprehensive report."""
         
         # Get all results
@@ -900,7 +908,7 @@ class TripOptimizationAgent:
         self.state_manager.state["combined_result"] = combined_result
         return self.state_manager.state
     
-    def _format_output(self, state: TripState) -> TripState:
+    def _format_output(self, state: Dict[str, Any]) -> Dict[str, Any]:
         """Format final output for presentation."""
         execution_summary = self.state_manager.get_execution_summary()
         self.state_manager.state["execution_summary"] = json.dumps(execution_summary, indent=2)

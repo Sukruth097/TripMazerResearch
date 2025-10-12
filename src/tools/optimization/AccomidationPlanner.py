@@ -103,7 +103,7 @@ First, identify and extract these parameters from the user's natural language qu
 - Preferences: Any amenities or features mentioned (wifi, pool, breakfast, 3star ,hostels,dormitory, 5 star hotels etc.)
 
 **CURRENCY DETECTION RULES:**
-- If BOTH from location AND destination are Indian regions/cities (Mumbai, Delhi, Bangalore, Chennai, Kolkata, Hyderabad, Pune, Ahmedabad, Jaipur, Surat, Lucknow, Kanpur, Nagpur, Indore, Thane, Bhopal, Visakhapatnam, Patna, Vadodara, Ghaziabad, Ludhiana, Agra, Nashik, Faridabad, Meerut, Rajkot, Kalyan, Vasai-Virar, Varanasi, Srinagar, Aurangabad, Dhanbad, Amritsar, Navi Mumbai, Allahabad, Ranchi, Howrah, Coimbatore, Jabalpur, Gwalior, Vijayawanda, Jodhpur, Madurai, Raipur, Kota, Guwahati, Chandigarh, Solapur, Hubli-Dharwad, Bareilly, Moradabad, Mysore, Gurgaon, Aligarh, Jalandhar, Tiruchirappalli, Bhubaneswar, Salem, Warangal, Mira-Bhayandar, Thiruvananthapuram, Bhiwandi, Saharanpur, Guntur, Amravati, Bikaner, Noida, Jamshedpur, Bhilai Nagar, Cuttack, Firozabad, Kochi, Bhavnagar, Dehradun, Durgapur, Asansol, Nanded-Waghala, Kolhapur, Ajmer, Akola, Gulbarga, Jamnagar, Ujjain, Loni, Siliguri, Jhansi, Ulhasnagar, Nellore, Jammu, Sangli-Miraj & Kupwad, Belgaum, Mangalore, Ambattur, Tirunelveli, Malegaon, Gaya, Jalgaon, Udaipur, Maheshtala, or any other Indian city/state): Use ₹ (Indian Rupees)
+- If BOTH from location AND destination are Indian regions/cities (Mumbai, Delhi, Bangalore, Chennai, Kolkata, Hyderabad, Pune, Ahmedabad, Jaipur, Surat, Lucknow, Kanpur, Nagpur, Indore, Thane, Bhopal, Visakhapatnam, Patna, Vadodara, Ghaziabad, Ludhiana, Agra, Nashik, Faridabad, Meerut, Rajkot, Kalyan, Vasai-Virar, Varanasi, Srinagar, Aurangabad, Dhanbad, Amritsar, Navi Mumbai, Allahabad, Ranchi, Howrah, Coimbatore, Jabalpur, Gwalior, Vijayawanda, Jodhpur, Madurai, Raipur, Kota, Guwahati, Chandigarh, Solapur, Hubli-Dharwad, Bareilly, Moradabad, Mysore, Gurgaon, Aligarh, Jalandhar, ...iruchirappalli, Bhubaneswar, Salem, Warangal, Mira-Bhayandar, Thiruvananthapuram, Bhiwandi, Saharanpur, Guntur, Amravati, Bikaner, Noida, Jamshedpur, Bhilai Nagar, Cuttack, Firozabad, Kochi, Bhavnagar, Dehradun, Durgapur, Asansol, Nanded-Waghala, Kolhapur, Ajmer, Akola, Gulbarga, Jamnagar, Ujjain, Loni, Siliguri, Jhansi, Ulhasnagar, Nellore, Jammu, Sangli-Miraj & Kupwad, Belgaum, Mangalore, Ambattur, Tirunelveli, Malegaon, Gaya, Jalgaon, Udaipur, Maheshtala, or any other Indian city/state): Use INR (Indian Rupees)
 - For ALL OTHER destinations or international travel: Use $ (US Dollars)
 
 **STEP 2: Provide comprehensive accommodation recommendations**
@@ -118,7 +118,7 @@ Based on the extracted requirements, search for and recommend accommodation opti
 6. Include booking tips and best practices
 7. Mention any seasonal considerations or local events that might affect pricing
 8. **BUDGET UTILIZATION**: Aim to use most of the available budget to recommend the best possible accommodations within user preferences
-8. **IMPORTANT**: Use the correct currency symbol (₹ for India, $ for international) throughout all pricing
+8. **IMPORTANT**: Use the correct currency symbol (INR for India, USD for international) throughout all pricing
 
 **Response Format (MANDATORY):**
 Start with a clear extraction summary, then provide recommendations in table format for easy comparison:
@@ -129,7 +129,7 @@ Start with a clear extraction summary, then provide recommendations in table for
 - **From:** [extracted from location]
 - **Destination:** [extracted destination]
 - **Guests:** [extracted number] people
-- **Budget:** [₹ for Indian regions or $ for international][extracted budget] [INR for Indian regions or USD for international]
+- **Budget:** [INR for Indian regions or USD for international][extracted budget] [INR for Indian regions or USD for international]
 - **Dates:** [extracted dates]
 - **Preferences:** [list extracted preferences or "None specified"]
 
@@ -139,9 +139,9 @@ Start with a clear extraction summary, then provide recommendations in table for
 
 | # | Property Name | Type | Price/Night/Person | Location | Coordinates | Key Amenities | Booking Links |
 |---|---------------|------|-------------------|----------|-------------|---------------|---------------|
-| 1 | [Hotel Name] | Hotel/Hostel | ₹[price] per person | [Area/District] | [Lat, Long] | WiFi, Breakfast, Pool | [Booking.com](https://booking.com) • [Agoda](https://agoda.com) |
-| 2 | [Hotel Name] | Apartment | ₹[price] per person | [Area/District] | [Lat, Long] | Kitchen, WiFi, AC | [Airbnb](https://airbnb.com) • [MakeMyTrip](https://makemytrip.com) |
-| 3 | [Hotel Name] | Hostel | ₹[price] per person | [Area/District] | [Lat, Long] | Dorm, WiFi, Common Area | [Hostelworld](https://hostelworld.com) • [Goibibo](https://goibibo.com) |
+| 1 | [Hotel Name] | Hotel/Hostel | INR [price] per person | [Area/District] | [Lat, Long] | WiFi, Breakfast, Pool | [Booking.com](https://booking.com) - [Agoda](https://agoda.com) |
+| 2 | [Hotel Name] | Apartment | INR [price] per person | [Area/District] | [Lat, Long] | Kitchen, WiFi, AC | [Airbnb](https://airbnb.com) - [MakeMyTrip](https://makemytrip.com) |
+| 3 | [Hotel Name] | Hostel | INR [price] per person | [Area/District] | [Lat, Long] | Dorm, WiFi, Common Area | [Hostelworld](https://hostelworld.com) - [Goibibo](https://goibibo.com) |
 
 ### Additional Information
 **Budget Option:** Brief note on value for money option with any trade-offs.
@@ -156,7 +156,7 @@ Always provide current, accurate information with specific details about availab
 **CRITICAL INSTRUCTIONS FOR COORDINATES AND BOOKING LINKS:**
 1. Include GPS coordinates (latitude, longitude) for each property in decimal format (e.g., 28.6139, 77.2090)
 2. Coordinates help users navigate and check exact locations on maps
-3. In Booking Links column, include multiple real booking platforms separated by • symbol
+3. In Booking Links column, include multiple real booking platforms separated by - symbol
 4. Try to provide actual hotel booking links when possible (Booking.com, Agoda, Airbnb, Hotels.com, etc.)
 5. Format as [Platform Name](URL) for proper markdown rendering
 6. Popular platforms: Booking.com, Agoda, Hotels.com, Expedia, Airbnb, MakeMyTrip, Goibibo, Hostelworld
@@ -166,14 +166,14 @@ Always provide current, accurate information with specific details about availab
 **CRITICAL PRICING INSTRUCTIONS:**
 - ALWAYS calculate and show price per night per person
 - If hotel room accommodates multiple guests, divide total room price by number of guests
-- For example: If room costs ₹3,000/night for 3 people, show ₹1,000 per person
+- For example: If room costs INR 3,000/night for 3 people, show INR 1,000 per person
 - For dormitory/hostel beds, show individual bed price
 - Make pricing calculations clear and accurate for the specified number of guests
 
 **EXAMPLE FORMAT:**
 - Coordinates column: 28.6139, 77.2090 (decimal degrees format)
-- Price column: ₹1,500 per person (if room for 3 people costs ₹4,500 total)
-- Booking Links: [Booking.com](https://booking.com/hotel/link) • [Agoda](https://agoda.com/hotel/link)"""
+- Price column: INR 1,500 per person (if room for 3 people costs INR 4,500 total)
+- Booking Links: [Booking.com](https://booking.com/hotel/link) - [Agoda](https://agoda.com/hotel/link)"""
 
         # Search using Perplexity with the combined extraction and recommendation prompt
         results = perplexity_service.search(
@@ -212,7 +212,7 @@ if __name__ == "__main__":
         print("\n" + "="*60)
         print("Test completed successfully!")
     except Exception as e:
-        print(f"❌ Error occurred: {str(e)}")
+        print(f"Error occurred: {str(e)}")
         print("\nTroubleshooting:")
         print("- Replace the placeholder API key with your actual Perplexity API key")
         print("- Check your internet connection")

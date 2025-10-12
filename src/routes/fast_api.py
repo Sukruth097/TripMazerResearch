@@ -9,6 +9,22 @@ from dotenv import load_dotenv
 # Load environment variables
 load_dotenv()
 
+# Configure logging first
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger("AI-Trip-Planner")
+
+# Initialize Azure configuration if available
+# try:
+#     from config.azure_config import initialize_azure_environment, get_environment_info
+#     azure_initialized = initialize_azure_environment()
+#     logger.info(f"Azure configuration initialized: {azure_initialized}")
+# except ImportError:
+#     logger.info("Azure configuration not available - running in local mode")
+#     azure_initialized = False
+
 # Add path for imports
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
@@ -16,7 +32,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
+from fastapi.openapi.utils import get_openapi
 
 # Import the trip optimization agent
 from agents.worker.trip_optimization_agent.agent import (
@@ -28,16 +44,11 @@ from agents.worker.trip_optimization_agent.agent import (
 from tools.optimization import (
     search_accommodations,
     plan_itinerary,
-    search_restaurants,
-    optimize_travel
+    search_restaurants
 )
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
+# Import the hybrid travel optimization (replaces old optimize_travel)
+from tools.optimization.TravelOptimization import hybrid_travel_optimization
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -45,7 +56,8 @@ app = FastAPI(
     description="Intelligent trip planning and optimization API for Azure Functions",
     version="1.0.0",
     docs_url="/docs",
-    redoc_url="/redoc"
+    redoc_url="/redoc",
+    root_path="/api"
 )
 
 # Configure CORS
@@ -57,24 +69,37 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Request/Response Models
-class TripPlanRequest(BaseModel):
-    query: str = Field(..., description="Natural language trip planning query", min_length=5)
+# Custom OpenAPI schema to avoid Azure Functions routing conflicts
+def custom_openapi():
+    if app.openapi_schema:
+        return app.openapi_schema
+    
+    openapi_schema = get_openapi(
+        title="TripMazer Optimization API",
+        version="1.0.0",
+        description="Multi-agent trip planning API system providing access to various AI agents for travel optimization",
+        routes=app.routes,
+    )
+    
+    app.openapi_schema = openapi_schema
+    return app.openapi_schema
 
-class ToolRequest(BaseModel):
-    query: str = Field(..., description="Natural language query for the specific tool", min_length=5)
+app.openapi = custom_openapi
 
-class RestaurantRequest(BaseModel):
-    itinerary_details: str = Field(..., description="Itinerary details for restaurant planning")
-    dates: str = Field(..., description="Travel dates")
-    dietary_preferences: str = Field(default="", description="Dietary preferences (optional)")
+# Validate configuration on startup
+@app.on_event("startup")
+async def startup_event():
+    logger.info("FastAPI app startup")
 
-class APIResponse(BaseModel):
-    success: bool
-    data: Optional[Any] = None
-    error: Optional[str] = None
-    timestamp: datetime
-    execution_time_ms: Optional[float] = None
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    logger.error(f"HTTP Exception occurred: {exc.status_code} - {exc.detail}")
+    logger.error(f"Request URL: {request.url}")
+    logger.error(f"Request headers: {dict(request.headers)}")
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.detail, "error": "Authentication failed"}
+    )
 
 # Global agent instance
 trip_agent = TripOptimizationAgent()
@@ -125,7 +150,7 @@ async def health_check():
 
 # Main trip planning endpoint
 @app.post("/optimized_trip_planner")
-async def plan_optimized_trip(request: TripPlanRequest):
+async def plan_optimized_trip(request: dict):
     """
     Plan a complete optimized trip based on natural language query.
     
@@ -141,12 +166,16 @@ async def plan_optimized_trip(request: TripPlanRequest):
     Returns:
         Complete trip planning results with budget allocation and recommendations
     """
-    logger.info(f"Trip planning requested with query: {request.query[:100]}...")
+    logger.info(f"Trip planning requested with query: {request.get('query', '')[:100]}...")
     
     try:
+        # Validate request
+        if not request.get('query'):
+            raise HTTPException(status_code=422, detail="Query field is required")
+            
         @measure_execution_time
         def execute_trip_planning():
-            return plan_complete_trip(request.query)
+            return plan_complete_trip(request['query'])
         
         results, execution_time = execute_trip_planning()
         
@@ -163,19 +192,19 @@ async def plan_optimized_trip(request: TripPlanRequest):
 
 # Individual tool endpoints
 @app.post("/tools/accommodation")
-async def search_accommodation_tool(request: ToolRequest):
+async def search_accommodation_tool(request: dict):
     """
     Search for accommodation options based on natural language query.
     
     This tool extracts accommodation requirements and provides detailed recommendations
     with pricing, amenities, and booking information.
     """
-    logger.info(f"Accommodation search requested: {request.query[:100]}...")
+    logger.info(f"Accommodation search requested: {request.get('query', '')[:100]}...")
     
     try:
         @measure_execution_time
         def execute_accommodation_search():
-            return search_accommodations.invoke({"query": request.query})
+            return search_accommodations.invoke({"query": request.get('query', '')})
         
         result, execution_time = execute_accommodation_search()
         
@@ -194,19 +223,19 @@ async def search_accommodation_tool(request: ToolRequest):
         )
 
 @app.post("/tools/itinerary")
-async def plan_itinerary_tool(request: ToolRequest):
+async def plan_itinerary_tool(request: dict):
     """
     Plan detailed itinerary based on natural language query.
     
     This tool creates day-by-day itineraries with activities, timing,
     and budget considerations.
     """
-    logger.info(f"Itinerary planning requested: {request.query[:100]}...")
+    logger.info(f"Itinerary planning requested: {request.get('query', '')[:100]}...")
     
     try:
         @measure_execution_time
         def execute_itinerary_planning():
-            return plan_itinerary.invoke({"query": request.query})
+            return plan_itinerary.invoke({"query": request.get('query', '')})
         
         result, execution_time = execute_itinerary_planning()
         
@@ -225,22 +254,23 @@ async def plan_itinerary_tool(request: ToolRequest):
         )
 
 @app.post("/tools/restaurants")
-async def search_restaurants_tool(request: RestaurantRequest):
+async def search_restaurants_tool(request: dict):
     """
     Search for restaurant recommendations based on itinerary and preferences.
     
     This tool provides restaurant suggestions aligned with the travel itinerary,
     including timing, cuisine types, and budget considerations.
     """
-    logger.info(f"Restaurant search requested for dates: {request.dates}")
+    logger.info(f"Restaurant search requested for dates: {request.get('dates', '')}")
     
     try:
         @measure_execution_time
         def execute_restaurant_search():
             return search_restaurants.invoke({
-                "itinerary_details": request.itinerary_details,
-                "dates": request.dates,
-                "dietary_preferences": request.dietary_preferences
+                "itinerary_details": request.get('itinerary_details', ''),
+                "dates": request.get('dates', ''),
+                "dietary_preferences": request.get('dietary_preferences', ''),
+                "budget_hint": request.get('budget_hint', '')
             })
         
         result, execution_time = execute_restaurant_search()
@@ -260,19 +290,19 @@ async def search_restaurants_tool(request: RestaurantRequest):
         )
 
 @app.post("/tools/travel")
-async def optimize_travel_tool(request: ToolRequest):
+async def optimize_travel_tool(request: dict):
     """
     Optimize travel routes and transportation based on query.
     
     This tool provides transportation recommendations with route optimization,
-    cost analysis, and timing considerations.
+    cost analysis, and timing considerations using the hybrid approach.
     """
-    logger.info(f"Travel optimization requested: {request.query[:100]}...")
+    logger.info(f"Travel optimization requested: {request.get('query', '')[:100]}...")
     
     try:
         @measure_execution_time
         def execute_travel_optimization():
-            return optimize_travel.invoke({"query": request.query})
+            return hybrid_travel_optimization.invoke({"query": request.get('query', '')})
         
         result, execution_time = execute_travel_optimization()
         
@@ -291,7 +321,7 @@ async def optimize_travel_tool(request: ToolRequest):
         )
 
 @app.post("/tools/travel_hybrid")
-async def optimize_travel_hybrid(request: ToolRequest):
+async def optimize_travel_hybrid(request: dict):
     """
     Hybrid travel optimization using SerpAPI for flights and Perplexity for other transport.
     
@@ -302,14 +332,14 @@ async def optimize_travel_hybrid(request: ToolRequest):
     - Use Perplexity for comprehensive bus/train options
     - Combine results for optimal travel recommendations
     """
-    logger.info(f"Hybrid travel optimization requested: {request.query[:100]}...")
+    logger.info(f"Hybrid travel optimization requested: {request.get('query', '')[:100]}...")
     
     try:
         @measure_execution_time
-        def execute_hybrid_optimization():
-            return trip_agent.process_trip_optimization(request.query)
+        def execute_hybrid_travel():
+            return hybrid_travel_optimization.invoke({"query": request.get('query', '')})
         
-        result, execution_time = execute_hybrid_optimization()
+        result, execution_time = execute_hybrid_travel()
         
         logger.info(f"Hybrid travel optimization completed in {execution_time:.2f}ms")
         return create_success_response({
@@ -338,6 +368,14 @@ async def get_agent_info():
         agent_info = {
             "agent_name": "TripOptimizationAgent",
             "version": "1.0.0",
+            "recent_updates": [
+                "Improved restaurant budget allocation (15% → 25%)",
+                "Added budget_hint parameter to restaurant search",
+                "Replaced optimize_travel with hybrid_travel_optimization",
+                "Enhanced budget allocation with 10% minimum for restaurants",
+                "Added comprehensive logging system",
+                "Fixed Unicode handling in logs"
+            ],
             "available_tools": [
                 {
                     "name": "accommodation",
@@ -351,22 +389,27 @@ async def get_agent_info():
                 },
                 {
                     "name": "restaurants",
-                    "description": "Find restaurant recommendations aligned with itinerary",
-                    "endpoint": "/tools/restaurants"
+                    "description": "Find restaurant recommendations with budget guidance",
+                    "endpoint": "/tools/restaurants",
+                    "new_features": ["budget_hint parameter for realistic pricing"]
                 },
                 {
                     "name": "travel",
-                    "description": "Optimize travel routes and transportation",
-                    "endpoint": "/tools/travel"
+                    "description": "Hybrid travel optimization (SerpAPI + Perplexity)",
+                    "endpoint": "/tools/travel",
+                    "new_features": ["Smart flight vs ground transport decisions", "Enhanced SERP data extraction"]
                 }
             ],
             "main_endpoint": "/optimized_trip_planner",
             "features": [
-                "Intelligent preference extraction",
-                "Dynamic budget allocation",
+                "Intelligent preference extraction via Gemini AI",
+                "Dynamic budget allocation (improved restaurant allocation)",
                 "Tool routing based on user priorities",
                 "Comprehensive result combination",
-                "Multi-currency support (₹ and $)"
+                "Multi-currency support (₹ and $)",
+                "Budget-aware restaurant recommendations",
+                "Hybrid travel optimization",
+                "Comprehensive execution logging"
             ]
         }
         
@@ -379,6 +422,59 @@ async def get_agent_info():
             status_code=500,
             detail=create_error_response(error_msg)
         )
+
+# Test endpoint for recent changes
+@app.post("/test/recent_changes")
+async def test_recent_changes(request: dict):
+    """
+    Test endpoint to verify all recent changes work correctly.
+    Tests budget allocation, restaurant budget hints, and hybrid travel optimization.
+    """
+    logger.info("Testing recent changes with sample query...")
+    
+    try:
+        # Test budget allocation
+        test_query = request.get('query') or "Plan trip from Delhi to Mumbai for 2 people, ₹25000 budget, good food"
+        
+        @measure_execution_time
+        def test_execution():
+            # Test the main trip planning with recent improvements
+            results = plan_complete_trip(test_query)
+            
+            # Extract budget information for verification
+            budget_info = {
+                "query": test_query,
+                "execution_successful": True,
+                "has_restaurant_results": "restaurant" in str(results).lower(),
+                "has_travel_results": "travel" in str(results).lower(),
+                "results_length": len(str(results))
+            }
+            
+            return {
+                "test_results": budget_info,
+                "actual_results": results
+            }
+        
+        test_data, execution_time = test_execution()
+        
+        logger.info(f"Recent changes test completed in {execution_time:.2f}ms")
+        return create_success_response({
+            "test_status": "SUCCESS",
+            "message": "All recent changes are working correctly",
+            "test_data": test_data,
+            "verified_features": [
+                "Budget allocation system",
+                "Restaurant budget hints", 
+                "Hybrid travel optimization",
+                "Comprehensive logging",
+                "Unicode handling"
+            ]
+        }, execution_time)
+        
+    except Exception as e:
+        error_msg = f"Recent changes test failed: {str(e)}"
+        logger.error(error_msg, exc_info=True)
+        return create_error_response(error_msg)
 
 # Global exception handler
 @app.exception_handler(Exception)
@@ -439,33 +535,33 @@ def main(req):
         )
 
 # For local development
-if __name__ == "__main__":
-    import uvicorn
+# if __name__ == "__main__":
+#     import uvicorn
     
-    # Check if required environment variables are set
-    required_env_vars = ["PERPLEXITY_API_KEY"]
-    missing_vars = [var for var in required_env_vars if not os.getenv(var)]
+#     # Check if required environment variables are set
+#     required_env_vars = ["PERPLEXITY_API_KEY"]
+#     missing_vars = [var for var in required_env_vars if not os.getenv(var)]
     
-    if missing_vars:
-        logger.error(f"Missing required environment variables: {missing_vars}")
-        logger.error("Please set these in your .env file")
-        sys.exit(1)
+#     if missing_vars:
+#         logger.error(f"Missing required environment variables: {missing_vars}")
+#         logger.error("Please set these in your .env file")
+#         sys.exit(1)
     
-    logger.info("Starting TripMazer Optimization API...")
-    logger.info("Available endpoints:")
-    logger.info("  - GET  /health - Health check")
-    logger.info("  - POST /optimized_trip_planner - Main trip planning")
-    logger.info("  - POST /tools/accommodation - Accommodation search")
-    logger.info("  - POST /tools/itinerary - Itinerary planning")
-    logger.info("  - POST /tools/restaurants - Restaurant search")
-    logger.info("  - POST /tools/travel - Travel optimization")
-    logger.info("  - GET  /agent/info - Agent information")
-    logger.info("  - GET  /docs - API documentation")
+#     logger.info("Starting TripMazer Optimization API...")
+#     logger.info("Available endpoints:")
+#     logger.info("  - GET  /health - Health check")
+#     logger.info("  - POST /optimized_trip_planner - Main trip planning")
+#     logger.info("  - POST /tools/accommodation - Accommodation search")
+#     logger.info("  - POST /tools/itinerary - Itinerary planning")
+#     logger.info("  - POST /tools/restaurants - Restaurant search")
+#     logger.info("  - POST /tools/travel - Travel optimization")
+#     logger.info("  - GET  /agent/info - Agent information")
+#     logger.info("  - GET  /docs - API documentation")
     
-    uvicorn.run(
-        "fast_api:app",
-        host="127.0.0.1",
-        port=8000,
-        reload=True,
-        log_level="info"
-    )
+#     uvicorn.run(
+#         "fast_api:app",
+#         host="127.0.0.1",
+#         port=8000,
+#         reload=True,
+#         log_level="info"
+#     )

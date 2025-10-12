@@ -100,7 +100,7 @@ First, identify and extract these parameters from the user's natural language qu
 - Preferred Activities: Any activities mentioned (beach, mountains, nightclub, pubs, temples, shopping, etc.)
 
 **CURRENCY DETECTION RULES:**
-- If BOTH from location AND destination are Indian regions/cities (Mumbai, Delhi, Bangalore, Chennai, Kolkata, Hyderabad, Pune, Ahmedabad, Jaipur, Surat, Lucknow, Kanpur, Nagpur, Indore, Thane, Bhopal, Visakhapatnam, Patna, Vadodara, Ghaziabad, Ludhiana, Agra, Nashik, Faridabad, Meerut, Rajkot, Kalyan, Vasai-Virar, Varanasi, Srinagar, Aurangabad, Dhanbad, Amritsar, Navi Mumbai, Allahabad, Ranchi, Howrah, Coimbatore, Jabalpur, Gwalior, Vijayawanda, Jodhpur, Madurai, Raipur, Kota, Guwahati, Chandigarh, Solapur, Hubli-Dharwad, Bareilly, Moradabad, Mysore, Gurgaon, Aligarh, Jalandhar, Tiruchirappalli, Bhubaneswar, Salem, Warangal, Mira-Bhayandar, Thiruvananthapuram, Bhiwandi, Saharanpur, Guntur, Amravati, Bikaner, Noida, Jamshedpur, Bhilai Nagar, Cuttack, Firozabad, Kochi, Bhavnagar, Dehradun, Durgapur, Asansol, Nanded-Waghala, Kolhapur, Ajmer, Akola, Gulbarga, Jamnagar, Ujjain, Loni, Siliguri, Jhansi, Ulhasnagar, Nellore, Jammu, Sangli-Miraj & Kupwad, Belgaum, Mangalore, Ambattur, Tirunelveli, Malegaon, Gaya, Jalgaon, Udaipur, Maheshtala, or any other Indian city/state): Use ₹ (Indian Rupees)
+- If BOTH from location AND destination are Indian regions/cities (Mumbai, Delhi, Bangalore, Chennai, Kolkata, Hyderabad, Pune, Ahmedabad, Jaipur, Surat, Lucknow, Kanpur, Nagpur, Indore, Thane, Bhopal, Visakhapatnam, Patna, Vadodara, Ghaziabad, Ludhiana, Agra, Nashik, Faridabad, Meerut, Rajkot, Kalyan, Vasai-Virar, Varanasi, Srinagar, Aurangabad, Dhanbad, Amritsar, Navi Mumbai, Allahabad, Ranchi, Howrah, Coimbatore, Jabalpur, Gwalior, Vijayawanda, Jodhpur, Madurai, Raipur, Kota, Guwahati, Chandigarh, Solapur, Hubli-Dharwad, Bareilly, Moradabad, Mysore, Gurgaon, Aligarh, Jalandhar, ...iruchirappalli, Bhubaneswar, Salem, Warangal, Mira-Bhayandar, Thiruvananthapuram, Bhiwandi, Saharanpur, Guntur, Amravati, Bikaner, Noida, Jamshedpur, Bhilai Nagar, Cuttack, Firozabad, Kochi, Bhavnagar, Dehradun, Durgapur, Asansol, Nanded-Waghala, Kolhapur, Ajmer, Akola, Gulbarga, Jamnagar, Ujjain, Loni, Siliguri, Jhansi, Ulhasnagar, Nellore, Jammu, Sangli-Miraj & Kupwad, Belgaum, Mangalore, Ambattur, Tirunelveli, Malegaon, Gaya, Jalgaon, Udaipur, Maheshtala, or any other Indian city/state): Use INR (Indian Rupees)
 - For ALL OTHER destinations or international travel: Use $ (US Dollars)
 
 **STEP 2: Create comprehensive day-by-day itinerary**
@@ -125,7 +125,7 @@ Based on the extracted requirements, create a detailed itinerary plan.
 - **From:** [extracted from location]
 - **Destination:** [extracted destination]
 - **Travel Type:** [solo/group/couple or "Not specified"]
-- **Budget:** [₹ for Indian regions or $ for international][extracted budget] [INR for Indian regions or USD for international]
+- **Budget:** [INR for Indian regions or USD for international][extracted budget] [INR for Indian regions or USD for international]
 - **Dates:** [extracted dates]
 - **Preferred Activities:** [list extracted activities or "None specified"]
 
@@ -162,7 +162,7 @@ Based on the extracted requirements, create a detailed itinerary plan.
 - [Safety and practical advice]
 
 **IMPORTANT FORMATTING RULES:**
-1. Use the correct currency symbol (₹ for India, $ for international) throughout
+1. Use the correct currency symbol (INR for India, USD for international) throughout
 2. Make Google Maps links clickable with format: [[Place Name](https://maps.google.com/search/Place+Name+City)]
 3. Include comprehensive activity details considering travel type preferences
 4. Provide realistic timing and logical activity flow
@@ -199,14 +199,14 @@ if __name__ == "__main__":
     # Test 2: Indian domestic travel (should use INR)
     test_query_indian = """
     Plan a 3-day itinerary for Goa from Mumbai for group travel
-    from 20-01-2026 to 23-01-2026 with budget ₹15000.
+    from 20-01-2026 to 23-01-2026 with budget INR 15000.
     We prefer beaches, water sports, and local cuisine.
     """
     
-    print("🗺️ Testing Itinerary Planner with Currency Detection...")
+    print("Testing Itinerary Planner with Currency Detection...")
     
     # Test international query
-    print(f"\n📍 TEST 1 - International Travel (Should use $ USD):")
+    print(f"\nTEST 1 - International Travel (Should use USD):")
     print(f"Query: {test_query_international.strip()}")
     print("\n" + "="*70)
     print("ITINERARY RESULTS:")
@@ -216,14 +216,14 @@ if __name__ == "__main__":
         result1 = plan_itinerary.invoke({"query": test_query_international})
         print(result1)
         print("\n" + "="*70)
-        print("✅ International itinerary test completed!")
+        print("International itinerary test completed!")
     except Exception as e:
-        print(f"❌ Error in international test: {str(e)}")
+        print(f"Error in international test: {str(e)}")
     
     print("\n" + "="*80 + "\n")
     
     # Test Indian domestic query
-    print(f"📍 TEST 2 - Indian Domestic Travel (Should use ₹ INR):")
+    print(f"TEST 2 - Indian Domestic Travel (Should use INR):")
     print(f"Query: {test_query_indian.strip()}")
     print("\n" + "="*70)
     print("ITINERARY RESULTS:")
@@ -233,12 +233,12 @@ if __name__ == "__main__":
         result2 = plan_itinerary.invoke({"query": test_query_indian})
         print(result2)
         print("\n" + "="*70)
-        print("✅ Indian domestic itinerary test completed!")
+        print("Indian domestic itinerary test completed!")
     except Exception as e:
-        print(f"❌ Error in Indian test: {str(e)}")
+        print(f"Error in Indian test: {str(e)}")
         
     print("\n" + "="*80)
     print("🎉 All itinerary tests completed!")
     print("💡 Check the daily tables with Time|Activity|Details|Maps columns above.")
     print("🔗 Maps should appear as clickable place names linking to Google Maps.")
-    print("💰 Check currency symbols (₹ vs $) in budget sections.")
+    print("Check currency symbols (INR vs USD) in budget sections.")

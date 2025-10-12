@@ -8,7 +8,7 @@ This module contains all the trip planning and optimization tools:
 - TravelOptimization: Optimize transportation routes and modes
 
 All tools use LLM-based extraction and Perplexity AI for search capabilities.
-They support currency detection (₹ for Indian regions, $ for international)
+They support currency detection (INR for Indian regions, USD for international)
 and provide comprehensive markdown outputs with Google Maps integration.
 """
 
@@ -53,7 +53,7 @@ TOOL_DESCRIPTIONS = {
         "description": "Advanced travel optimization with SERP API flights + Perplexity ground transport",
         "input": "Natural language query with travel details, automatically decides flight vs ground transport",
         "output": "Smart transportation recommendations with real flight pricing and comprehensive options",
-        "example": "Plan trip from Delhi to Bangalore for 2 people, budget ₹30000, prefer flights",
+        "example": "Plan trip from Delhi to Bangalore for 2 people, budget INR 30000, prefer flights",
         "features": ["SERP API flight pricing", "Gemini natural language understanding", "Budget-aware decisions", "Clean output"]
     }
 }
@@ -112,13 +112,13 @@ def plan_complete_trip(
     
     try:
         # Step 1: Plan itinerary
-        print("🗺️ Planning itinerary...")
+        print("Planning itinerary...")
         itinerary_result = plan_itinerary.invoke({"query": itinerary_query})
         results['itinerary'] = itinerary_result
         
         # Step 2: Find restaurants based on itinerary
         if dietary_preferences:
-            print("🍽️ Finding restaurants...")
+            print("Finding restaurants...")
             # Extract dates from itinerary query (simple extraction)
             import re
             date_match = re.search(r'(\d{1,2}-\d{1,2}-\d{4})\s+to\s+(\d{1,2}-\d{1,2}-\d{4})', itinerary_query)
@@ -133,13 +133,13 @@ def plan_complete_trip(
         
         # Step 3: Optimize travel
         if travel_optimization_query:
-            print("🚌 Optimizing travel...")
+            print("Optimizing travel...")
             travel_result = hybrid_travel_optimization.invoke({"query": travel_optimization_query})
             results['travel'] = travel_result
             
-        print("✅ Complete trip planning finished!")
+        print("Complete trip planning finished!")
         return results
         
     except Exception as e:
-        print(f"❌ Error in complete trip planning: {str(e)}")
+        print(f"Error in complete trip planning: {str(e)}")
         return {"error": str(e), **results}

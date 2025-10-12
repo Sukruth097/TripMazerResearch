@@ -33,17 +33,17 @@ def search_restaurants(itinerary_details: str, dates: str, dietary_preferences: 
         itinerary_details: Complete itinerary in JSON/Markdown format from itinerary planner
         dates: Travel dates in DD-MM-YYYY to DD-MM-YYYY format
         dietary_preferences: Dietary preferences like "veg only", "veg and non-veg", "non-veg only", etc.
-        budget_hint: Optional budget guidance like "₹6250 for 2 people for 3 days" to suggest appropriate price ranges
+        budget_hint: Optional budget guidance like "INR 6250 for 2 people for 3 days" to suggest appropriate price ranges
     
     Returns:
         str: Restaurant recommendations in markdown table format with realistic pricing
     
     Example:
-        >>> itinerary = "Day 1 - Tokyo: Visit Senso-ji Temple (9:00 AM), Nakamise Shopping (12:00 PM)"
-        >>> dates = "25-12-2025 to 28-12-2025"
-        >>> preferences = "veg and non-veg"
-        >>> result = search_restaurants(itinerary, dates, preferences)
-        >>> print(result)
+        itinerary = "Day 1 - Tokyo: Visit Senso-ji Temple (9:00 AM), Nakamise Shopping (12:00 PM)"
+        dates = "25-12-2025 to 28-12-2025"
+        preferences = "veg and non-veg"
+        result = search_restaurants(itinerary, dates, preferences)
+      
         
         # Restaurant Recommendations
         
@@ -79,12 +79,12 @@ def search_restaurants(itinerary_details: str, dates: str, dietary_preferences: 
 
 **BUDGET CONSIDERATIONS:**
 - If budget is provided, calculate realistic per-person per-meal costs
-- For Indian destinations: Budget restaurants ₹150-300, Mid-range ₹300-800, Fine dining ₹800-2000 per person
+- For Indian destinations: Budget restaurants INR 150-300, Mid-range INR 300-800, Fine dining INR 800-2000 per person
 - For international destinations: Budget $10-25, Mid-range $25-60, Fine dining $60-150 per person
 - If budget seems insufficient, suggest budget-friendly options but mention realistic alternatives
 
 **CURRENCY DETECTION RULES:**
-- If locations in the itinerary are Indian regions/cities (Mumbai, Delhi, Bangalore, Chennai, Kolkata, Hyderabad, Pune, Ahmedabad, Jaipur, Surat, Lucknow, Kanpur, Nagpur, Indore, Thane, Bhopal, Visakhapatnam, Patna, Vadodara, Ghaziabad, Ludhiana, Agra, Nashik, Faridabad, Meerut, Rajkot, Kalyan, Vasai-Virar, Varanasi, Srinagar, Aurangabad, Dhanbad, Amritsar, Navi Mumbai, Allahabad, Ranchi, Howrah, Coimbatore, Jabalpur, Gwalior, Vijayawanda, Jodhpur, Madurai, Raipur, Kota, Guwahati, Chandigarh, Solapur, Hubli-Dharwad, Bareilly, Moradabad, Mysore, Gurgaon, Aligarh, Jalandhar, Tiruchirappalli, Bhubaneswar, Salem, Warangal, Mira-Bhayandar, Thiruvananthapuram, Bhiwandi, Saharanpur, Guntur, Amravati, Bikaner, Noida, Jamshedpur, Bhilai Nagar, Cuttack, Firozabad, Kochi, Bhavnagar, Dehradun, Durgapur, Asansol, Nanded-Waghala, Kolhapur, Ajmer, Akola, Gulbarga, Jamnagar, Ujjain, Loni, Siliguri, Jhansi, Ulhasnagar, Nellore, Jammu, Sangli-Miraj & Kupwad, Belgaum, Mangalore, Ambattur, Tirunelveli, Malegaon, Gaya, Jalgaon, Udaipur, Maheshtala, or any other Indian city/state): Use ₹ (Indian Rupees)
+- If locations in the itinerary are Indian regions/cities (Mumbai, Delhi, Bangalore, Chennai, Kolkata, Hyderabad, Pune, Ahmedabad, Jaipur, Surat, Lucknow, Kanpur, Nagpur, Indore, Thane, Bhopal, Visakhapatnam, Patna, Vadodara, Ghaziabad, Ludhiana, Agra, Nashik, Faridabad, Meerut, Rajkot, Kalyan, Vasai-Virar, Varanasi, Srinagar, Aurangabad, Dhanbad, Amritsar, Navi Mumbai, Allahabad, Ranchi, Howrah, Coimbatore, Jabalpur, Gwalior, Vijayawanda, Jodhpur, Madurai, Raipur, Kota, Guwahati, Chandigarh, Solapur, Hubli-Dharwad, Bareilly, Moradabad, Mysore, Gurgaon, Aligarh, Jalandhar, Tiruchirappalli, Bhubaneswar, Salem, Warangal, Mira-Bhayandar, Thiruvananthapuram, Bhiwandi, Saharanpur, Guntur, Amravati, Bikaner, Noida, Jamshedpur, Bhilai Nagar, Cuttack, Firozabad, Kochi, Bhavnagar, Dehradun, Durgapur, Asansol, Nanded-Waghala, Kolhapur, Ajmer, Akola, Gulbarga, Jamnagar, Ujjain, Loni, Siliguri, Jhansi, Ulhasnagar, Nellore, Jammu, Sangli-Miraj & Kupwad, Belgaum, Mangalore, Ambattur, Tirunelveli, Malegaon, Gaya, Jalgaon, Udaipur, Maheshtala, or any other Indian city/state): Use INR (Indian Rupees)
 - For ALL OTHER international destinations: Use $ (US Dollars)
 
 **DIETARY PREFERENCE HANDLING:**
@@ -100,7 +100,7 @@ def search_restaurants(itinerary_details: str, dates: str, dietary_preferences: 
 4. Match restaurant proximity to itinerary locations
 5. Respect dietary preferences strictly
 6. Include local cuisine specialties
-7. Provide realistic price ranges in correct currency (consider ₹800-1500 per person per day for decent meals in India)
+7. Provide realistic price ranges in correct currency (consider INR 800-1500 per person per day for decent meals in India)
 8. Add Google Maps links as clickable restaurant names
 9. **BUDGET UTILIZATION**: Recommend restaurants that make good use of the available budget while respecting dietary preferences and user tastes. If budget seems low, suggest budget-friendly options but mention realistic alternatives.
 
@@ -112,7 +112,7 @@ def search_restaurants(itinerary_details: str, dates: str, dietary_preferences: 
 - **Travel Dates:** [extracted dates]
 - **Dietary Preferences:** [extracted preferences or "No specific preferences"]
 - **Locations:** [list of locations from itinerary]
-- **Currency:** [₹ INR or $ USD based on location]
+- **Currency:** [INR or USD based on location]
 
 ---
 
@@ -145,7 +145,7 @@ def search_restaurants(itinerary_details: str, dates: str, dietary_preferences: 
 - [Special dietary requirement handling]
 
 **IMPORTANT:**
-- Use correct currency throughout (₹ for Indian locations, $ for international)
+- Use correct currency throughout (INR for Indian locations, USD for international)
 - Ensure all restaurant suggestions align with specified dietary preferences
 - Provide clickable Google Maps links for each restaurant
 - Consider meal timing logically with itinerary activities"""
@@ -168,7 +168,7 @@ def search_restaurants(itinerary_details: str, dates: str, dietary_preferences: 
 
 
 if __name__ == "__main__":
-    print("🍽️ Testing Restaurant Search with Itinerary Integration...")
+    print("Testing Restaurant Search with Itinerary Integration...")
     
     # First, we need to import and run the itinerary planner
     try:
@@ -181,7 +181,7 @@ if __name__ == "__main__":
         We prefer temples, shopping, and traditional experiences.
         """
         
-        print("📍 STEP 1: Generating Itinerary...")
+        print("STEP 1: Generating Itinerary...")
         print(f"Query: {itinerary_query.strip()}")
         print("\n" + "="*60)
         
@@ -194,7 +194,7 @@ if __name__ == "__main__":
         print("\n" + "="*80 + "\n")
         
         # Test restaurant search with the generated itinerary
-        print("🍽️ STEP 2: Finding Restaurants...")
+        print("STEP 2: Finding Restaurants...")
         print("Dietary Preferences: veg and non-veg")
         print("\n" + "="*60)
         print("RESTAURANT RECOMMENDATIONS:")
@@ -210,48 +210,11 @@ if __name__ == "__main__":
         print(restaurant_result)
         
         print("\n" + "="*80)
-        print("✅ Restaurant search integration test completed!")
-        print("💡 Check restaurant recommendations aligned with itinerary locations and times.")
+        print("Restaurant search integration test completed!")
+        print(" Check restaurant recommendations aligned with itinerary locations and times.")
         
     except ImportError:
-        print("❌ Could not import itinerary planner. Testing restaurant search independently...")
-        
-        # Fallback: Test with sample itinerary
-        sample_itinerary = """
-        # Itinerary Planning Results
-        
-        ## Day 1 - December 25, 2025
-        | Time | Activity | Details | Maps |
-        |------|----------|---------|------|
-        | 9:00 AM | Senso-ji Temple | Traditional Buddhist temple | [Senso-ji Temple](https://maps.google.com/search/Senso-ji+Temple+Tokyo) |
-        | 12:00 PM | Nakamise Shopping Street | Traditional shopping | [Nakamise Street](https://maps.google.com/search/Nakamise+Shopping+Street+Tokyo) |
-        | 6:00 PM | Asakusa District | Evening exploration | [Asakusa](https://maps.google.com/search/Asakusa+Tokyo) |
-        
-        ## Day 2 - December 26, 2025
-        | Time | Activity | Details | Maps |
-        |------|----------|---------|------|
-        | 10:00 AM | Meiji Shrine | Peaceful shrine | [Meiji Shrine](https://maps.google.com/search/Meiji+Shrine+Tokyo) |
-        | 2:00 PM | Ginza Shopping | High-end shopping | [Ginza](https://maps.google.com/search/Ginza+Tokyo) |
-        """
-        
-        print("Using sample itinerary for testing...")
-        print("\n" + "="*60)
-        print("RESTAURANT RECOMMENDATIONS:")
-        print("="*60)
-        
-        restaurant_result = search_restaurants.invoke({
-            "itinerary_details": sample_itinerary,
-            "dates": "25-12-2025 to 27-12-2025", 
-            "dietary_preferences": "veg and non-veg"
-        })
-        
-        print(restaurant_result)
-        print("\n" + "="*60)
-        print("✅ Sample restaurant search test completed!")
-    
+        print("Could not import itinerary planner. Testing restaurant search independently...")
     except Exception as e:
-        print(f"❌ Error in restaurant search test: {str(e)}")
-        print("\nTroubleshooting:")
-        print("- Replace the placeholder API key with your actual Perplexity API key")
-        print("- Check your internet connection")
-        print("- Verify your Perplexity API key is valid")
+        print(f"Error in restaurant search test: {str(e)}")
+     

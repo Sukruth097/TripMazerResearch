@@ -5,48 +5,10 @@ Manages state variables for tracking budget, user preferences, tool results,
 and execution flow throughout the trip planning process.
 """
 
-from typing import Dict, List, Optional, Any, TypedDict
-from dataclasses import dataclass, field
+from typing import Dict, List, Optional, Any
+from dataclasses import dataclass
 from datetime import datetime
 import json
-
-
-class TripState(TypedDict):
-    """State schema for trip optimization agent."""
-    # Input Information
-    original_query: str
-    user_preferences: Dict[str, Any]
-    total_budget: float
-    currency: str
-    dates: str
-    from_location: str
-    to_location: str
-    travelers: int
-    
-    # Budget Tracking
-    remaining_budget: float
-    budget_allocation: Dict[str, float]
-    spent_amounts: Dict[str, float]
-    
-    # Tool Execution Order
-    tool_sequence: List[str]
-    current_step: int
-    completed_tools: List[str]
-    
-    # Tool Results
-    accommodation_result: Optional[str]
-    itinerary_result: Optional[str]
-    restaurant_result: Optional[str]
-    travel_result: Optional[str]
-    
-    # Error Handling
-    errors: List[str]
-    warnings: List[str]
-    retry_count: int
-    
-    # Final Output
-    combined_result: Optional[str]
-    execution_summary: Optional[str]
 
 
 @dataclass
@@ -54,46 +16,46 @@ class StateManager:
     """Manages state for trip optimization agent."""
     
     def __init__(self):
-        self.state: TripState = self._initialize_state()
+        self.state: Dict[str, Any] = self._initialize_state()
     
-    def _initialize_state(self) -> TripState:
+    def _initialize_state(self) -> Dict[str, Any]:
         """Initialize empty state."""
-        return TripState(
+        return {
             # Input Information
-            original_query="",
-            user_preferences={},
-            total_budget=0.0,
-            currency="",
-            dates="",
-            from_location="",
-            to_location="",
-            travelers=1,
+            "original_query": "",
+            "user_preferences": {},
+            "total_budget": 0.0,
+            "currency": "",
+            "dates": "",
+            "from_location": "",
+            "to_location": "",
+            "travelers": 1,
             
             # Budget Tracking
-            remaining_budget=0.0,
-            budget_allocation={},
-            spent_amounts={},
+            "remaining_budget": 0.0,
+            "budget_allocation": {},
+            "spent_amounts": {},
             
             # Tool Execution Order
-            tool_sequence=[],
-            current_step=0,
-            completed_tools=[],
+            "tool_sequence": [],
+            "current_step": 0,
+            "completed_tools": [],
             
             # Tool Results
-            accommodation_result=None,
-            itinerary_result=None,
-            restaurant_result=None,
-            travel_result=None,
+            "accommodation_result": None,
+            "itinerary_result": None,
+            "restaurant_result": None,
+            "travel_result": None,
             
             # Error Handling
-            errors=[],
-            warnings=[],
-            retry_count=0,
+            "errors": [],
+            "warnings": [],
+            "retry_count": 0,
             
             # Final Output
-            combined_result=None,
-            execution_summary=None
-        )
+            "combined_result": None,
+            "execution_summary": None
+        }
     
     def update_input_info(self, query: str, preferences: Dict[str, Any], 
                          budget: float, currency: str, dates: str,
@@ -160,14 +122,12 @@ class StateManager:
     
     def update_tool_result(self, tool_name: str, result: str):
         """Update result for a specific tool."""
-        if tool_name == "accommodation":
-            self.state["accommodation_result"] = result
-        elif tool_name == "itinerary":
-            self.state["itinerary_result"] = result
-        elif tool_name == "restaurant":
-            self.state["restaurant_result"] = result
-        elif tool_name == "travel":
-            self.state["travel_result"] = result
+        result_field = f"{tool_name}_result"
+        if result_field in self.state:
+            self.state[result_field] = result
+        else:
+            # Handle unknown tool names by adding them to warnings
+            self.add_warning(f"Unknown tool name: {tool_name}. Available tools: accommodation, itinerary, restaurant, travel")
     
     def add_error(self, error: str):
         """Add error to state."""

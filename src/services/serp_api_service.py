@@ -169,6 +169,43 @@ class SerpAPIService:
         search = GoogleSearch(params)
         results = search.get_dict()
         return results.get("images_results", [])
+    
+    def search_buses(self, from_location: str, to_location: str, departure_date: str,
+                    country_code: str = "in", language: str = "en") -> Dict[str, Any]:
+        """
+        Search for bus routes and schedules using SerpAPI Google Search.
+        
+        Args:
+            from_location: Departure city/location
+            to_location: Destination city/location  
+            departure_date: Date in YYYY-MM-DD format
+            country_code: Country code (default "in" for India)
+            language: Language code (default "en")
+            
+        Returns:
+            Dict containing bus search results
+        """
+        try:
+            # Format the search query for bus booking websites
+            query = f"{from_location} to {to_location} bus {departure_date} redbus makemytrip abhibus"
+            
+            params = {
+                "engine": "google",
+                "q": query,
+                "api_key": self.api_key,
+                "gl": country_code,
+                "hl": language,
+                "num": 3  # Get more results to find bus booking sites
+            }
+            
+            search = GoogleSearch(params)
+            results = search.get_dict()
+            
+            return results
+            
+        except Exception as e:
+            print(f"Bus search error: {e}")
+            return {"error": str(e)}
 
 
 # Example usage
@@ -256,3 +293,5 @@ if __name__ == "__main__":
             
     except Exception as e:
         print(f"Advanced flight search error: {e}")
+
+    
