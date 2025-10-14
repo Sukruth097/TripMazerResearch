@@ -15,7 +15,7 @@ The primary way to use TripMazer is through our **dark-themed Streamlit web inte
 - **🍽️ Restaurant Discovery**: Dining suggestions based on your itinerary
 - **🗺️ Intelligent Itinerary**: Detailed day-by-day trip planning
 - **💬 AI Chat Assistant**: Comprehensive trip planning with multi-agent system
-- **🌚 Dark Theme**: Black background with green text for better visibility
+
 
 ### 📋 **Setup Instructions**
 
@@ -43,10 +43,8 @@ Edit `src/.env` with your API keys:
 PERPLEXITY_API_KEY=your_perplexity_api_key_here
 GEMINI_API_KEY=your_gemini_api_key_here  
 SERP_API_KEY=your_serp_api_key_here
-
-# Optional Azure Configuration
-AZURE_STORAGE_CONNECTION_STRING=your_azure_storage_connection_string_here
-AZURE_KEY_VAULT_URL=your_azure_key_vault_url_here
+APPINSIGHTS_INSTRUMENTATIONKEY="your_api_key"
+APPLICATIONINSIGHTS_CONNECTION_STRING="your_api_key"
 ```
 
 #### **4. Run the Application**

@@ -405,18 +405,18 @@ def accommodations_section():
         # Auto-populate from trip data if available
         if st.session_state.trip_data:
             default_destination = st.session_state.trip_data.get('destination', '')
-            default_checkin = st.session_state.trip_data.get('start_date', date.today())
-            default_checkout = st.session_state.trip_data.get('end_date', date.today())
+            default_checkin = st.session_state.trip_data.get('start_date', None)
+            default_checkout = st.session_state.trip_data.get('end_date', None)
             default_guests = st.session_state.trip_data.get('travelers', 2)
         else:
             default_destination = ''
-            default_checkin = date.today()
-            default_checkout = date.today()
+            default_checkin = None
+            default_checkout = None
             default_guests = 2
         
         destination = st.text_input("Destination", value=default_destination, placeholder="e.g., Paris")
         checkin_date = st.date_input("Check-in Date", value=default_checkin, min_value=date.today())
-        checkout_date = st.date_input("Check-out Date", value=default_checkout, min_value=checkin_date)
+        checkout_date = st.date_input("Check-out Date", value=default_checkout, min_value=date.today())
         guests = st.number_input("Number of Guests", min_value=1, max_value=10, value=default_guests)
         
         accommodation_budget = st.number_input("Accommodation Budget", min_value=0, value=10000)
@@ -613,7 +613,7 @@ def itinerary_section():
                     Preferred area: {accommodation_area}
                     """
                     
-                    results = plan_itinerary(query)
+                    results = plan_itinerary.invoke({"query": query})
                     
                     st.success("✅ Itinerary created!")
                     st.markdown("### 🗺️ Your Custom Itinerary")

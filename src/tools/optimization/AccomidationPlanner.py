@@ -159,12 +159,11 @@ Start with a clear extraction summary, then provide recommendations in table for
 | 3 | [Hotel Name] | Hostel | INR [price] per person | [Area/District] | [Lat, Long] | Dorm, WiFi, Common Area | [Hostelworld](https://hostelworld.com) - [Goibibo](https://goibibo.com) |
 
 ### Additional Information
-**Budget Option:** Brief note on value for money option with any trade-offs.
-**Luxury Option:** Brief note on premium choice and why it's worth the extra cost.
-**Seasonal Notes:** December is peak season - book early for better rates and availability.
+**Budget Option:** Value for money with basic amenities.
+**Luxury Option:** Premium choice worth the extra cost.
 
 ## Booking Tips
-Book early for peak season/holidays for better rates. All guests need valid ID at check-in.
+Book early for better rates. Valid ID required at check-in.
 
 Always provide current, accurate information with specific details about availability and pricing where possible.
 
