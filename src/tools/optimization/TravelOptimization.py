@@ -35,7 +35,7 @@ def _search_flights_with_serp(params: TravelSearchParams) -> Dict[str, Any]:
     try:
         serp_service = _get_serp_api_service()
         
-        # Use airport codes resolved by agent (fallback to city names if not available)
+        # Use airport codes from params (agent should provide these)
         origin_airport = params.origin_airport or params.origin
         dest_airport = params.destination_airport or params.destination
         
@@ -270,22 +270,84 @@ def travel_search_tool(origin: str, destination: str, departure_date: str,
 if __name__ == "__main__":
     print("Testing Unified Travel Search Tool...")
     
-    # Test with direct parameters
+    # Test with direct parameters using .invoke()
     try:
-        test_result = travel_search_tool(
-            origin="Mumbai",
-            destination="Delhi",
-            departure_date="2024-12-01",
-            transport_modes=["flight", "train"],
-            travelers=2,
-            return_date="2024-12-05",
-            budget_limit=15000,
-            currency="INR",
-            is_domestic=True
-        )
+        test_result = travel_search_tool.invoke({
+            "origin": "Mumbai",
+            "destination": "Delhi",
+            "origin_airport": "BOM",  # Mumbai airport code
+            "destination_airport": "DEL",  # Delhi airport code
+            "departure_date": "2025-12-01",
+            "transport_modes": ["flight", "train"],
+            "travelers": 2,
+            "return_date": "2025-12-05",
+            "budget_limit": 35000,
+            "currency": "INR",
+            "is_domestic": True
+        })
         
         print("✅ Test successful!")
-        print("Results:", test_result[:500], "...")
+        print("\n" + "="*80)
+        print("SEARCH RESULTS")
+        print("="*80)
+        
+        # Parse and display results
+        results = json.loads(test_result)
+        
+        # Display Flight Results
+        if 'flights' in results.get('results', {}):
+            flights = results['results']['flights']
+            print("\n🛫 FLIGHT OPTIONS:")
+            print("-"*80)
+            
+            if flights.get('success'):
+                # Outbound flights
+                if flights.get('outbound'):
+                    print("\n📤 Outbound Journey (Mumbai → Delhi):")
+                    outbound = flights['outbound']
+                    if isinstance(outbound, dict) and 'best_flights' in outbound:
+                        for idx, flight in enumerate(outbound['best_flights'][:3], 1):
+                            print(f"\n  Option {idx}:")
+                            print(f"    Airlines: {', '.join([f['airline'] for f in flight.get('flights', [])])}")
+                            print(f"    Departure: {flight.get('departure_token', 'N/A')}")
+                            print(f"    Duration: {flight.get('total_duration', 'N/A')} min")
+                            print(f"    Price: ₹{flight.get('price', 0):,.0f}")
+                            print(f"    Carbon: {flight.get('carbon_emissions', {}).get('this_flight', 'N/A')} g")
+                    else:
+                        print(f"    Raw data: {str(outbound)[:200]}...")
+                
+                # Return flights
+                if flights.get('return'):
+                    print("\n📥 Return Journey (Delhi → Mumbai):")
+                    return_flights = flights['return']
+                    if isinstance(return_flights, dict) and 'best_flights' in return_flights:
+                        for idx, flight in enumerate(return_flights['best_flights'][:3], 1):
+                            print(f"\n  Option {idx}:")
+                            print(f"    Airlines: {', '.join([f['airline'] for f in flight.get('flights', [])])}")
+                            print(f"    Departure: {flight.get('departure_token', 'N/A')}")
+                            print(f"    Duration: {flight.get('total_duration', 'N/A')} min")
+                            print(f"    Price: ₹{flight.get('price', 0):,.0f}")
+                            print(f"    Carbon: {flight.get('carbon_emissions', {}).get('this_flight', 'N/A')} g")
+                    else:
+                        print(f"    Raw data: {str(return_flights)[:200]}...")
+            else:
+                print(f"    ❌ Flight search failed: {flights.get('error')}")
+        
+        # Display Ground Transport Results
+        if 'ground_transport' in results.get('results', {}):
+            ground = results['results']['ground_transport']
+            print("\n\n🚆 TRAIN OPTIONS:")
+            print("-"*80)
+            
+            if ground.get('success'):
+                raw_text = ground.get('raw_results', '')
+                print(raw_text[:1000] + "..." if len(raw_text) > 1000 else raw_text)
+            else:
+                print(f"    ❌ Train search failed: {ground.get('error')}")
+        
+        print("\n" + "="*80)
+        print(f"Search completed using: {', '.join(results.get('summary', {}).get('providers_used', []))}")
+        print("="*80)
         
     except Exception as e:
         print(f"❌ Test failed: {e}")
