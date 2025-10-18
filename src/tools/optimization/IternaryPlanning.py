@@ -42,7 +42,7 @@ def plan_itinerary(query: str) -> str:
         - **From:** Delhi
         - **Destination:** Tokyo
         - **Travel Type:** Couple
-        - **Budget:** $1500 USD
+        - **Budget:** ₹125000 INR
         - **Dates:** 25-12-2025 to 28-12-2025
         - **Preferred Activities:** temples, shopping, nightlife
         
@@ -64,12 +64,12 @@ def plan_itinerary(query: str) -> str:
         | 2:00 PM | Ginza Shopping | High-end shopping district | [Ginza](https://maps.google.com/search/Ginza+Tokyo) |
         
         ## Budget Breakdown
-        - **Total Budget:** $1500 USD
-        - **Per Day:** ~$500 USD
-        - **Activities:** $200 per day
-        - **Food:** $150 per day  
-        - **Transportation:** $50 per day
-        - **Shopping:** $100 per day
+        - **Total Budget:** ₹125000 INR
+        - **Per Day:** ~₹42000 INR
+        - **Activities:** ₹17000 per day
+        - **Food:** ₹12000 per day  
+        - **Transportation:** ₹4000 per day
+        - **Shopping:** ₹9000 per day
         
         ## Travel Tips
         - Book temple visits early during peak season
@@ -226,10 +226,10 @@ First, identify and extract these parameters from the user's natural language qu
 if __name__ == "__main__":
     # Test queries with different scenarios
     
-    # Test 1: International travel with preferences (should use USD)
+    # Test 1: International travel with preferences (should use INR)
     test_query_international = """
     Plan a 4-day itinerary for Tokyo from Delhi for a couple 
-    from 25-12-2025 to 29-12-2025 with budget $2000. 
+    from 25-12-2025 to 29-12-2025 with budget ₹165000. 
     We prefer temples, shopping, nightlife, and traditional experiences.
     """
     
@@ -243,7 +243,7 @@ if __name__ == "__main__":
     print("Testing Itinerary Planner with Currency Detection...")
     
     # Test international query
-    print(f"\nTEST 1 - International Travel (Should use USD):")
+    print(f"\nTEST 1 - International Travel (Should use INR):")
     print(f"Query: {test_query_international.strip()}")
     print("\n" + "="*70)
     print("ITINERARY RESULTS:")

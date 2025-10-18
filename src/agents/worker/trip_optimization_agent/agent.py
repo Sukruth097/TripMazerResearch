@@ -13,7 +13,7 @@ from langgraph.graph import StateGraph, END
 from langchain_core.messages import HumanMessage, AIMessage
 from langchain.schema import BaseMessage
 from dotenv import load_dotenv
-# Import optimization tools
+
 from src.tools.optimization import (
     search_accommodations, 
     plan_itinerary, 
@@ -223,7 +223,7 @@ class TripOptimizationAgent:
                 "return_date": "YYYY-MM-DD format or null for one-way",
                 "travelers": "number of travelers",
                 "budget_limit": "budget amount (number only) or null",
-                "currency": "INR for Indian routes, USD for international",
+                "currency": "INR for all destinations (always use INR)",
                 "transport_modes": ["flight", "bus", "train"] - include all relevant modes,
                 "preferred_mode": "user's preferred transport mode or null",
                 "trip_type": "round_trip or one_way",
@@ -239,7 +239,7 @@ class TripOptimizationAgent:
             4. Extract actual dates mentioned, convert to YYYY-MM-DD
             5. If no budget mentioned, set budget_limit=null
             6. Default travelers=1 if not specified
-            7. Set currency="USD" as placeholder (will be resolved by location analysis)
+            7. Set currency="INR" (always use INR for all destinations)
             8. Set is_domestic=false as placeholder (will be resolved by location analysis)
             
             Return ONLY valid JSON.
@@ -276,7 +276,7 @@ class TripOptimizationAgent:
                 departure_date="2024-12-01",
                 transport_modes=["flight", "bus", "train"],
                 travelers=1,
-                currency="USD"
+                currency="INR"  # Always use INR
             )
     
     def resolve_airport_codes_and_currency(self, params: TravelSearchParams) -> TravelSearchParams:
@@ -316,9 +316,8 @@ class TripOptimizationAgent:
             - International: New York=JFK/LGA, London=LHR, Paris=CDG, Tokyo=NRT, etc.
             
             CURRENCY LOGIC:
-            - If EITHER origin OR destination is in India -> "INR"
-            - If BOTH are outside India -> "USD"  
-            - Indian regions/states: All states, Union Territories, major cities in India
+            - Always use "INR" for all destinations (domestic and international)
+            - No currency differentiation based on location
             
             DOMESTIC vs INTERNATIONAL:
             - is_domestic: true if BOTH locations are in India
@@ -332,7 +331,7 @@ class TripOptimizationAgent:
                 "destination_city": "standardized city name",
                 "origin_is_indian": true/false,
                 "destination_is_indian": true/false,
-                "currency": "INR or USD",
+                "currency": "INR (always)",
                 "is_domestic": true/false,
                 "is_international": true/false
             }}
@@ -357,7 +356,7 @@ class TripOptimizationAgent:
             # Update parameters with resolved data
             params.origin = resolution_data.get('origin_city', params.origin)
             params.destination = resolution_data.get('destination_city', params.destination) 
-            params.currency = resolution_data.get('currency', 'USD')
+            params.currency = 'INR'  # Always use INR regardless of destination
             params.is_domestic = resolution_data.get('is_domestic', False)
             params.is_international = resolution_data.get('is_international', True)
             
@@ -370,17 +369,14 @@ class TripOptimizationAgent:
             
         except Exception as e:
             self.logger.error(f"Airport code resolution failed: {e}")
-            # Fallback: basic logic
+            # Fallback: Always use INR
+            params.currency = 'INR'  # Always use INR regardless of destination
+            
             indian_keywords = ['mumbai', 'delhi', 'bangalore', 'chennai', 'kolkata', 'hyderabad', 'pune', 'goa', 'kerala', 'tamil nadu', 'karnataka', 'maharashtra']
             
             origin_is_indian = any(keyword in params.origin.lower() for keyword in indian_keywords)
             dest_is_indian = any(keyword in params.destination.lower() for keyword in indian_keywords)
             
-            if origin_is_indian or dest_is_indian:
-                params.currency = 'INR'
-            else:
-                params.currency = 'USD'
-                
             params.is_domestic = origin_is_indian and dest_is_indian
             params.is_international = not params.is_domestic
             
@@ -419,7 +415,7 @@ class TripOptimizationAgent:
                 results_data = raw_results
             
             budget = user_context.get('budget', 'Not specified')
-            currency = user_context.get('currency', 'USD')
+            currency = user_context.get('currency', 'INR')  # Always use INR
             travelers = user_context.get('travelers', 1)
             preferred_mode = user_context.get('preferred_mode', 'any')
             
@@ -486,48 +482,48 @@ class TripOptimizationAgent:
             
             FORMATTING RULES:
             - Convert duration_minutes to "Xh Ym" format (e.g., 135 → 2h 15m, 125 → 2h 5m)
-            - Format prices with currency symbol and commas (10698 → ₹10,698)
+            - Format prices with currency symbol and commas (10698 → Rs.10,698)
             - Calculate total cost = price_per_person × {travelers}
             - Extract time only from departure_time/arrival_time (e.g., "2025-12-01 07:05" → "07:05")
-            - Use clear section headings with emojis and DATES: 🛫 ✈️ 🚆 🚌
-            - Include journey date in headers: "📤 Outbound Journey (Origin → Destination) - Date"
-            - Include journey date in headers: "📥 Return Journey (Destination → Origin) - Date"
-            - Highlight best value options with ⭐ or 💰 emoji
-            - Add budget status: ✅ Within Budget | ⚠️ Near Limit | ❌ Over Budget
+            - Use clear section headings with DATES
+            - Include journey date in headers: ">> Outbound Journey (Origin to Destination) - Date"
+            - Include journey date in headers: "<< Return Journey (Destination to Origin) - Date"
+            - Highlight best value options with asterisk (*) or BEST VALUE label
+            - Add budget status: [WITHIN BUDGET] | [NEAR LIMIT] | [OVER BUDGET]
             
             OUTPUT STRUCTURE:
-            # ✈️ Travel Search Results
+            # Travel Search Results
             
-            ## 🛫 Flight Options
+            ## Flight Options
             
-            ### 📤 Outbound Journey (Origin → Destination) - Departure Date
+            ### >> Outbound Journey (Origin to Destination) - Departure Date
             [Clean markdown table with ALL flights from outbound_flights array]
             
             **Budget Status:** [Check total cost against budget {budget}]
             **Recommended:** [Highlight 1-2 best options based on price/value]
             
-            ### 📥 Return Journey (Destination → Origin) - Return Date
+            ### << Return Journey (Destination to Origin) - Return Date
             [Clean markdown table with ALL flights from return_flights array]
             
             **Budget Status:** [Check total cost against budget]
             **Recommended:** [Highlight 1-2 best options]
             
-            ## 🚆 Train Options (if available)
-            ### 📤 Outbound Journey (Origin → Destination) - Departure Date
+            ## Train Options (if available)
+            ### >> Outbound Journey (Origin to Destination) - Departure Date
             [Format ground_transport.outbound_trains[] into table]
             
-            ### 📥 Return Journey (Destination → Origin) - Return Date
+            ### << Return Journey (Destination to Origin) - Return Date
             [Format ground_transport.return_trains[] into table]
             
-            ## 🚌 Bus Options (if available)
-            ### 📤 Outbound Journey (Origin → Destination) - Departure Date
+            ## Bus Options (if available)
+            ### >> Outbound Journey (Origin to Destination) - Departure Date
             [Format ground_transport.outbound_buses[] into table]
             
-            ### 📥 Return Journey (Destination → Origin) - Return Date
+            ### << Return Journey (Destination to Origin) - Return Date
             [Format ground_transport.return_buses[] into table]
             
-            ## 💰 Cost Summary & Recommendations
-            | Transport Mode | Cheapest Option | Most Convenient | Best Value ⭐ |
+            ## Cost Summary & Recommendations
+            | Transport Mode | Cheapest Option | Most Convenient | Best Value (*) |
             |----------------|-----------------|-----------------|---------------|
             
             **Total Trip Cost Range:** ₹X,XXX - ₹Y,YYY for {travelers} travelers
@@ -655,9 +651,8 @@ class TripOptimizationAgent:
             1. **budget**: Extract ONLY numbers (25000, 1500, 50000). Look for "rupees 25000", "budget $1500", "₹50000", "with 25k budget". If no budget mentioned → null. Budget drives all planning decisions.
 
             2. **currency**: 
-               - "INR" for: Indian locations (Mumbai, Delhi, Bangalore, Chennai, Kolkata, Hyderabad, Pune, Goa, Kerala, Tamil Nadu, Karnataka, etc.) OR rupee indicators ("rupees", "₹", "INR")
-               - "USD" for: $ symbol, "dollars", international locations (New York, Paris, London, etc.)
-               - null if completely unclear
+               - Always use "INR" for all destinations (domestic and international)
+               - This applies to all locations regardless of country or currency symbols mentioned
 
             3. **dates**: Convert to "DD-MM-YYYY to DD-MM-YYYY" format. Handle various inputs:
                - "25-12-2025 to 30-12-2025" → "25-12-2025 to 30-12-2025"
@@ -738,7 +733,7 @@ class TripOptimizationAgent:
                 # Validate and set defaults for missing fields (no default budget)
                 validated_preferences = {
                     'budget': preferences.get('budget'),  # No default budget - must come from query
-                    'currency': preferences.get('currency', 'USD'),
+                    'currency': 'INR',  # Always use INR for all destinations
                     'dates': preferences.get('dates', 'Not specified'),
                     'from_location': preferences.get('from_location', 'Not specified'),
                     'to_location': preferences.get('to_location', 'Not specified'),
@@ -769,7 +764,7 @@ class TripOptimizationAgent:
         # Default preferences
         preferences = {
             'budget': None,
-            'currency': 'USD',
+            'currency': 'INR',  # Always use INR
             'dates': 'Not specified',
             'from_location': 'Not specified',
             'to_location': 'Not specified',
@@ -942,6 +937,88 @@ class TripOptimizationAgent:
                 'itinerary': 0.30, 
                 'travel': 0.35
             }
+    
+    def _determine_accommodation_preference(self, query: str, location: str, budget: float) -> str:
+        """
+        Use Gemini to naturally understand accommodation preference from user query.
+        
+        CRITICAL: SERP API fails with detailed queries. Only return one of TWO simple formats:
+        1. "Budget hotels and hostels in {location}"
+        2. "Luxury hotels in {location}"
+        
+        Args:
+            query: User's original natural language query
+            location: Destination location
+            budget: Allocated budget for accommodation
+            
+        Returns:
+            str: Simple SERP query - either "Budget hotels and hostels in X" or "Luxury hotels in X"
+        """
+        try:
+            # Get Gemini client
+            client = self._get_gemini_client()
+            
+            # Create natural language understanding prompt
+            preference_prompt = f"""
+            TASK: Analyze the user's travel query and determine their accommodation preference.
+
+            USER QUERY: "{query}"
+            DESTINATION: {location}
+            ACCOMMODATION BUDGET: {budget}
+
+            Understand the user's accommodation preferences from their natural language query.
+            Consider:
+            - Explicit mentions (luxury, premium, budget, cheap, hostel, etc.)
+            - Implicit preferences from budget level (high budget suggests luxury, low budget suggests budget)
+            - Travel style indicators (backpacking = budget, comfort = luxury, business = luxury)
+            - Context clues (honeymoon/anniversary = luxury, student trip = budget)
+
+            Based on your understanding, return ONLY one of these TWO options:
+            1. "Budget hotels and hostels in {location}" - for budget-conscious travelers
+            2. "Luxury hotels in {location}" - for comfort/luxury-seeking travelers
+
+            EXAMPLES:
+            Query: "Planning a budget trip to Goa with friends"
+            Output: Budget hotels and hostels in Goa
+
+            Query: "Honeymoon in Dubai, want best hotels with great service"
+            Output: Luxury hotels in Dubai
+
+            Query: "Backpacking through Thailand, need cheap hostels"
+            Output: Budget hotels and hostels in Thailand
+
+            Query: "Business trip to Mumbai, prefer comfortable stay"
+            Output: Luxury hotels in Mumbai
+
+            Query: "Family vacation to Paris with 50000 rupees budget"
+            Output: Luxury hotels in Paris
+
+            Query: "Student trip to Manali, low budget 5000 rupees"
+            Output: Budget hotels and hostels in Manali
+
+            Return ONLY the query string, nothing else.
+            """
+            
+            # Use Gemini for natural language understanding
+            response = client.models.generate_content(
+                model="gemini-2.0-flash-exp",
+                contents=preference_prompt
+            )
+            
+            serp_query = response.text.strip()
+            
+            # Validate response format
+            if "Budget hotels and hostels in" in serp_query or "Luxury hotels in" in serp_query:
+                return serp_query
+            else:
+                # Fallback: default to budget
+                self.logger.warning(f"⚠️ Gemini returned unexpected format: '{serp_query}', using budget default")
+                return f"Budget hotels and hostels in {location}"
+            
+        except Exception as e:
+            self.logger.warning(f"⚠️ Gemini accommodation preference failed: {e}, using budget default")
+            # Fallback to budget
+            return f"Budget hotels and hostels in {location}"
     
     def _reallocate_remaining_budget(self, state: Dict[str, Any], completed_tools: List[str]) -> Dict[str, float]:
         """
@@ -1123,7 +1200,8 @@ class TripOptimizationAgent:
                 location = state.get("to_location", "Not specified")
                 dates_str = state.get("dates", "")
                 travelers = state.get("travelers", 2)
-                currency = state.get("currency", "INR")
+                # Always use INR regardless of destination
+                currency = "INR"
                 
                 # Parse dates to get check-in and check-out
                 check_in_date = None
@@ -1138,15 +1216,26 @@ class TripOptimizationAgent:
                 except Exception as e:
                     self.logger.warning(f"Could not parse dates: {e}")
                 
+                # Use Gemini to determine accommodation preference (Budget vs Luxury)
+                # CRITICAL: SERP API fails with detailed queries - keep it simple!
+                # Only 2 query types: "Budget hotels and hostels in X" or "Luxury hotels in X"
+                serp_query = self._determine_accommodation_preference(original_query, location, allocated_budget)
+                self.logger.info(f"🏨 Gemini-determined query: '{serp_query}'")
+                
+                # Note: Rating filter defaults to [7, 8, 9] in the tool
+                # No need to override - SERP rating filter doesn't differentiate budget vs luxury
+                # The query term (Budget/Luxury) handles the type of accommodation
+                
                 # Prepare tool parameters
                 tool_params = {
-                    "query": budget_aware_query,
                     "location": location,
                     "check_in_date": check_in_date,
                     "check_out_date": check_out_date,
                     "adults": travelers,
                     "children": 0,
-                    "currency": currency
+                    "currency": "INR",  # Always use INR for all destinations
+                    # rating defaults to [7, 8, 9] in tool - no need to specify
+                    "query": serp_query  # Simple query determined by Gemini
                 }
                 self.logger.info(f"Tool Parameters: {tool_params}")
                 result = self.tools["accommodation"].invoke(tool_params)
@@ -1163,7 +1252,7 @@ class TripOptimizationAgent:
                 travelers = state.get("travelers", 2)
                 dates_str = state.get("dates", "")
                 location = state.get("to_location", "Not specified")
-                currency = state.get("currency", "USD")
+                currency = "INR"  # Always use INR for all destinations
                 
                 # Calculate days from dates
                 try:

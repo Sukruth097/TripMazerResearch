@@ -148,7 +148,7 @@ def search_restaurants(location: str, dates: str = "", dietary_preferences: str 
 - **Travel Dates:** [extracted dates]
 - **Dietary Preferences:** [extracted preferences or "No specific preferences"]
 - **Locations:** [list of locations from itinerary]
-- **Currency:** [INR or USD based on location]
+- **Currency:** INR (Indian Rupees)
 
 ---
 
@@ -181,7 +181,7 @@ def search_restaurants(location: str, dates: str = "", dietary_preferences: str 
 - [Special dietary requirement handling]
 
 **IMPORTANT:**
-- Use correct currency throughout (INR for Indian locations, USD for international)
+- Always use INR (Indian Rupees) currency throughout for all locations
 - Ensure all restaurant suggestions align with specified dietary preferences
 - Provide clickable Google Maps links for each restaurant
 - Consider meal timing logically with itinerary activities (if provided)"""

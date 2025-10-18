@@ -330,9 +330,10 @@ def trip_planning_section():
         # Number of travelers
         travelers = st.number_input("Number of Travelers", min_value=1, max_value=10, value=2)
         
-        # Budget
-        budget = st.number_input("Budget (in your local currency)", min_value=0, value=50000)
-        currency = st.selectbox("Currency", ["INR", "USD", "EUR", "GBP"])
+        # Budget (always in INR)
+        budget = st.number_input("Budget (in INR ₹)", min_value=0, value=50000)
+        currency = "INR"  # Always use INR for all destinations
+        st.info("💡 All prices are displayed in INR (Indian Rupees) regardless of destination")
     
     with col2:
         st.subheader("⚙️ Preferences")
@@ -414,18 +415,25 @@ def accommodations_section():
             default_checkout = None
             default_guests = 2
         
-        destination = st.text_input("Destination", value=default_destination, placeholder="e.g., Paris")
+        destination = st.text_input("Destination", value=default_destination, placeholder="e.g., Paris, Mumbai, Dubai")
         checkin_date = st.date_input("Check-in Date", value=default_checkin, min_value=date.today())
         checkout_date = st.date_input("Check-out Date", value=default_checkout, min_value=date.today())
         guests = st.number_input("Number of Guests", min_value=1, max_value=10, value=default_guests)
         
-        accommodation_budget = st.number_input("Accommodation Budget", min_value=0, value=10000)
-        room_type = st.selectbox("Room Type Preference", ["Any", "Single", "Double", "Suite", "Family Room"])
-        
-        amenities = st.multiselect(
-            "Preferred Amenities",
-            ["WiFi", "Breakfast", "Pool", "Gym", "Spa", "Parking", "Pet Friendly", "Business Center"]
+        # Accommodation preference: Budget or Luxury (determines SERP query)
+        st.markdown("**Accommodation Preference**")
+        accommodation_type = st.radio(
+            "Select preference:",
+            ["Budget (Hotels & Hostels)", "Luxury (Premium Hotels)"],
+            help="Budget: Affordable hotels, hostels, and budget accommodations\nLuxury: Premium hotels, resorts, and high-end properties",
+            label_visibility="collapsed"
         )
+        
+        # Info about what user will get
+        if accommodation_type == "Budget (Hotels & Hostels)":
+            st.info("🏨 **Budget Search:** Searching for affordable hotels, hostels, and budget-friendly accommodations with best value for money.")
+        else:
+            st.info("✨ **Luxury Search:** Searching for premium hotels, resorts, and high-end properties with top amenities and services.")
     
     with col2:
         st.subheader("🎯 Quick Options")
@@ -440,34 +448,37 @@ def accommodations_section():
     # Search accommodations
     if st.button("🏨 Search Accommodations", type="primary", use_container_width=True):
         if destination:
-            with st.spinner("🔄 Finding perfect accommodations..."):
+            with st.spinner("🔄 Searching hotels via Google Hotels API..."):
                 try:
-                    amenities_str = ", ".join(amenities) if amenities else "standard amenities"
-                    query = f"""
-                    Find accommodations in {destination} for {guests} people 
-                    from {checkin_date.strftime('%d-%m-%Y')} to {checkout_date.strftime('%d-%m-%Y')}
-                    with budget {accommodation_budget} and prefer {amenities_str}
-                    and {room_type} room type
-                    """
-                    
                     # Extract parameters for SERP hotel search
                     check_in_str = checkin_date.strftime('%Y-%m-%d')
                     check_out_str = checkout_date.strftime('%Y-%m-%d')
-                    currency = "INR"  # Default to INR for India, can be enhanced based on destination
                     
-                    # Call tool with both query and extracted parameters using invoke
+                    # Always use INR for all destinations
+                    currency = "INR"
+                    
+                    # Construct simple SERP query based on accommodation type
+                    # CRITICAL: SERP API fails with detailed queries - keep it simple!
+                    if accommodation_type == "Luxury (Premium Hotels)":
+                        serp_query = f"Luxury hotels in {destination}"
+                    else:
+                        serp_query = f"Budget hotels and hostels in {destination}"
+                    
+                    # Call tool with structured parameters
+                    # Note: rating defaults to [7, 8, 9] in tool - no need to specify
                     results = search_accommodations.invoke({
-                        "query": query,
                         "location": destination,
                         "check_in_date": check_in_str,
                         "check_out_date": check_out_str,
                         "adults": guests,
                         "children": 0,
-                        "currency": currency
+                        "currency": currency,
+                        # rating defaults to [7, 8, 9] in tool
+                        "query": serp_query  # Simple query: "Budget hotels and hostels in X" or "Luxury hotels in X"
                     })
                     
-                    st.success("✅ Accommodations found!")
-                    st.markdown("### 🏨 Accommodation Options")
+                    st.success("✅ Hotels found via Google Hotels API!")
+                    st.markdown("### 🏨 Hotel Search Results")
                     st.markdown(results)
                     
                 except Exception as e:

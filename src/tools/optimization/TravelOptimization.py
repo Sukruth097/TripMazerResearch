@@ -382,7 +382,7 @@ def travel_search_tool(origin: str, destination: str, departure_date: str,
         travelers: Number of travelers
         return_date: Return date for round trips
         budget_limit: Budget limit
-        currency: Currency code (USD, INR, etc.)
+        currency: Currency code (always INR)
         origin_airport: Airport code resolved by agent (optional)
         destination_airport: Airport code resolved by agent (optional) 
         is_domestic: Whether route is domestic

@@ -170,19 +170,20 @@ class SerpAPIService:
         results = search.get_dict()
         return results.get("images_results", [])
     
-    def search_hotels(self, location: str, check_in_date: str, check_out_date: str,
+    def search_hotels(self, query: str, check_in_date: str, check_out_date: str,
                      currency: str, country_code: str = "in",
                      adults: Optional[int] = None, children: Optional[int] = None,
                      language: Optional[str] = None, vacation_rentals: Optional[str] = None,
                      sort_by: Optional[List[int]] = None, max_price: Optional[str] = None,
                      min_price: Optional[str] = None, property_types: Optional[str] = None,
+                     rating: Optional[str] = None,
                      amenities: Optional[str] = None, hotel_class: Optional[str] = None,
                      free_cancellation: Optional[str] = None, no_cache: Optional[str] = None) -> Dict[str, Any]:
         """
         Search for hotels and accommodations using SerpAPI Google Hotels engine.
         
         Mandatory Args:
-            location (str): Destination city/location for accommodation search
+            query (str): Search query for hotels (can be a city name like "Mumbai" or a full query like "hotels under 2000rs per night in Mumbai")
             check_in_date (str): Check-in date in YYYY-MM-DD format
             check_out_date (str): Check-out date in YYYY-MM-DD format
             currency (str): Currency code (e.g., "INR", "USD")
@@ -193,7 +194,7 @@ class SerpAPIService:
             children (Optional[int]): Number of children
             language (Optional[str]): Language code (e.g., "en") - defaults to 'en' if not provided
             vacation_rentals (Optional[str]): Include vacation rentals ("true"/"false") - defaults to "true"
-            sort_by (Optional[List[int]]): Sort criteria [13-Rating, 3-Price, 8-Distance, 9-Popularity]
+            sort_by (Optional[List[int]]): Sort criteria list [13-Rating, 3-Price, 8-Distance, 9-Popularity] - defaults to [3] (Price)
             max_price (Optional[str]): Maximum price filter
             min_price (Optional[str]): Minimum price filter
             property_types (Optional[str]): Filter by property types - defaults to [12,13,14,17] (all types)
@@ -201,13 +202,17 @@ class SerpAPIService:
             hotel_class (Optional[str]): Filter by star rating (e.g., "2,3,4,5")
             free_cancellation (Optional[str]): Filter for free cancellation ("true"/"false")
             no_cache (Optional[str]): Force fresh results ("true"/"false") - defaults to "true"
-            
+            rating (Optional[str]): Filter by hotel rating (e.g., "2,3,4,5")
+
         Returns:
             Dict[str, Any]: Hotel search results with properties, prices, ratings, amenities
         """
         try:
-            # Construct search query
-            query = f"{location} hotels, hostels, resorts and Beach hotels"
+            # Debug: Print what's being sent to SERP API
+            print(f"\n🌐 DEBUG - SERP API Call:")
+            print(f"   Query: '{query}'")
+            print(f"   Max Price: {max_price if max_price else 'None'}")
+            print(f"   Sort By: {sort_by}")
             
             # Build mandatory parameters with hardcoded defaults
             params = {
@@ -218,20 +223,21 @@ class SerpAPIService:
                 "currency": currency,
                 "gl": country_code,
                 "api_key": self.api_key,
-                "property_types": ["12","13","14","17"],  # All property types
+                # "property_types": ["12","13","14","17"],  # All property types
                 "hl": language if language is not None else "en",  # Default to English
-                "adults": str(adults) if adults is not None else "2",  # Default to 2 adults
+                "adults": adults if adults is not None else 2,  # Default to 2 adults
                 # "vacation_rentals": vacation_rentals if vacation_rentals is not None else "true",  # Default to true
-                "no_cache": "true"  # Default to true
+                "no_cache": "true",  # Default to true
+                # "sort_by": sort_by if sort_by is not None else [3],  # Default to sort by price
             }
             
             # Add optional parameters if provided
             optional_params = {
                 "children": str(children) if children is not None else None,
-                "sort_by": sort_by,
                 "max_price": max_price,
                 "min_price": min_price,
                 "amenities": amenities,
+                "rating": rating,
                 "hotel_class": hotel_class,
                 "free_cancellation": free_cancellation
             }
@@ -254,7 +260,7 @@ class SerpAPIService:
 # Example usage
 if __name__ == "__main__":
     # Initialize with API key (can be provided directly or loaded from environment)
-    API_KEY = "81a7d4fd3ef75f706da83b81e981e8eaeb9831453cb5ec0e4d1de003314fd7f3"
+    API_KEY = "8fd53e75d1e2453e52aa981eee93384c3ddbc6b87c4e43404c5f1ff5e990032a"
     serp_service = SerpAPIService(api_key=API_KEY)
     
     # Test location images search
@@ -341,15 +347,15 @@ if __name__ == "__main__":
     print("\nTesting hotel search:")
     try:
         hotel_results = serp_service.search_hotels(
-            location="Goa",
+            query="Budget hotels in Mumbai",
             check_in_date="2025-11-19",
             check_out_date="2025-11-22",
             currency="INR",
             country_code="in",  # Mandatory
-            adults=2,           # Optional, defaults to 2
+            adults=1,           # Optional, defaults to 2
             language="en",      # Optional, defaults to 'en'
-            vacation_rentals="true",  # Optional, defaults to "true"
-            sort_by=[13, 3, 8],  # Rating, Price, Distance
+            rating="8",
+            sort_by="3",
             no_cache="true"      # Optional, defaults to "true"
         )
         
@@ -366,7 +372,7 @@ if __name__ == "__main__":
             
             # Extract properties (hotels)
             if 'properties' in hotel_results and hotel_results['properties']:
-                properties = hotel_results['properties'][:5]  # Get top 5
+                properties = hotel_results['properties']  # Get top 5
                 print(f"\nFOUND {len(hotel_results['properties'])} HOTELS")
                 print(f"\nTOP 5 HOTELS:")
                 
