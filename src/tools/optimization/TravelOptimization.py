@@ -218,7 +218,7 @@ def _extract_ground_transport_details_with_ai(raw_text: str, transport_type: str
         return extracted_data if isinstance(extracted_data, list) else []
         
     except Exception as e:
-        print(f"⚠️ AI extraction failed for {transport_type}: {e}")
+        print(f"❌ AI extraction failed for {transport_type}: {type(e).__name__}: {e}")
         return []
 
 
@@ -285,7 +285,7 @@ def _search_ground_transport_with_perplexity(params: TravelSearchParams, modes: 
             
             # Extract structured data from raw text
             trains_structured = _extract_ground_transport_details_with_ai(
-                train_raw, 'train', params.travelers, params.currency
+                train_raw if isinstance(train_raw, str) else "", 'train', params.travelers, params.currency
             )
             
             # Split into outbound and return based on count
@@ -336,7 +336,7 @@ def _search_ground_transport_with_perplexity(params: TravelSearchParams, modes: 
             
             # Extract structured data from raw text
             buses_structured = _extract_ground_transport_details_with_ai(
-                bus_raw, 'bus', params.travelers, params.currency
+                bus_raw if isinstance(bus_raw, str) else "", 'bus', params.travelers, params.currency
             )
             
             # Split into outbound and return
@@ -455,6 +455,7 @@ def travel_search_tool(origin: str, destination: str, departure_date: str,
         
         # Search ground transport with Perplexity if requested
         ground_modes = [mode for mode in params.transport_modes if mode in ['bus', 'train']]
+        
         if ground_modes and params.use_perplexity_for_ground:
             print(f"Searching {', '.join(ground_modes)} with Perplexity...")
             ground_results = _search_ground_transport_with_perplexity(params, ground_modes)
