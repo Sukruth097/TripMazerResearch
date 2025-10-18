@@ -368,7 +368,9 @@ def trip_planning_section():
                     """
                     
                     # Call the optimization tool
+
                     results = travel_search_tool.invoke({"query": query})
+                    # results = optimize_travel(query)
                     
                     # Store results in session state
                     st.session_state.trip_data = {

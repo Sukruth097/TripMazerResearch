@@ -64,7 +64,8 @@ def plan_itinerary(query: str) -> str:
         | 2:00 PM | Ginza Shopping | High-end shopping district | [Ginza](https://maps.google.com/search/Ginza+Tokyo) |
         
         ## Budget Breakdown
-        - **Total Budget:** $1500 USD
+        ## Budget Breakdown
+- **Total Budget:** [Currency][Amount] [Currency Code]
         - **Per Day:** ~$500 USD
         - **Activities:** $200 per day
         - **Food:** $150 per day  
@@ -111,6 +112,11 @@ First, identify and extract these parameters from the user's natural language qu
    - For markets: "In Chandni Chowk, start at Kinari Bazaar for wedding items, then head to Dariba Kalan for silver jewelry, and end at Katra Neel for fabrics also add the eatery places"
    - For temples: "At Jama Masjid, climb the southern minaret (INR 25) for city views, visit the courtyard during afternoon prayers for cultural experience"
    - For neighborhoods: "In Hauz Khas Village, start at Social for drinks, then Yeti for live music, end at PCO for late-night dancing"
+   
+   **IMPORTANT FORMAT RULES:**
+   - DO NOT include any links or URLs in the Local Recommendations column
+   - Keep all map links ONLY in the Maps column
+   - For each place mentioned in recommendations, include its corresponding map link in the Maps column
 
 2. **TRAVEL DISTANCES & TIME**: Include realistic travel information:
    - Distance in KM between activities
@@ -130,10 +136,15 @@ First, identify and extract these parameters from the user's natural language qu
      * Operating hours and best times to visit
    - Suggest lighter days after intensive days
 
-4. **PROPER GOOGLE MAPS LINKS**: Use exact place names that work:
-   - Format: https://www.google.com/maps/search/Exact+Place+Name+City+Country
-   - Example: https://www.google.com/maps/search/Jama+Masjid+Delhi+India
-   - Test format: [Place Name](https://www.google.com/maps/search/Place+Name+City+Country)
+4. **PROPER GOOGLE MAPS LINKS**: Use complete and exact location details that work:
+   - Required format: https://www.google.com/maps/search/Exact+Place+Name+Street+Area+City+State+Country
+   - Examples:
+     * https://www.google.com/maps/search/Jama+Masjid+Chandni+Chowk+Old+Delhi+Delhi+India
+     * https://www.google.com/maps/search/Mount+View+Restaurant+Mall+Road+Old+Manali+Manali+Himachal+Pradesh+India
+
+   - CRITICAL RULES:
+     * ALWAYS include venue name + street + area + city + state + country
+     * DO NOT abbreviate any part of the address
 
 5. **BUDGET UTILIZATION**: Aim to use most of the available budget for comprehensive experiences based on user preferences.
 
@@ -156,7 +167,7 @@ First, identify and extract these parameters from the user's natural language qu
 
 | Time | Activity | Local Recommendations & Tips | Distance/Transport | Weather | Maps |
 |------|----------|------------------------------|-------------------|---------|------|
-| [Time] | [Activity Name] | **What to do specifically:** • [First specific tip with prices] • [Second specific tip] • [Third specific tip] **Why for [travel type]:** • [First reason] • [Second reason] | **From previous:** [X]km, [Y] mins by [transport] | **Best time:** [Morning/Afternoon/Evening] **Conditions:** [Weather considerations] | [[Activity Name](https://www.google.com/maps/search/Activity+Name+City+Country)] |
+| [Time] | [Activity Name] | **What to do specifically:** • [First specific tip with prices] • [Second specific tip] • [Third specific tip] **Why for [travel type]:** • [First reason] • [Second reason] | **From previous:** [X]km, [Y] mins by [transport] | **Best time:** [Morning/Afternoon/Evening] **Conditions:** [Weather considerations] | • [[Place 1](https://www.google.com/maps/search/Place1+Name+Street+Area+City+State+Country)] • [[Place 2](https://www.google.com/maps/search/Place2+Name+Street+Area+City+State+Country)]• [Place 3].... |
 
 
 ## Day 2 - [Date]
@@ -165,7 +176,6 @@ First, identify and extract these parameters from the user's natural language qu
 |------|----------|------------------------------|-------------------|---------|------|
 | [Time] | [Activity Name] | **What to do specifically:** • [Detailed local guide recommendations in bullet points] **Why for [travel type]:** • [Reasons in bullet points] | **From previous:** [X]km, [Y] mins by [transport] | **Best time:** [Time recommendation] **Conditions:** [Weather advice] | [[Activity Name](https://www.google.com/maps/search/Activity+Name+City+Country)] |
 
-[Continue for all days...]
 
 ## Budget Breakdown
 - **Total Budget:** [Currency][Amount] [Currency Code]
@@ -182,10 +192,14 @@ First, identify and extract these parameters from the user's natural language qu
 - **Cultural Etiquette:** [Specific local customs and dress codes]
 - **Safety Tips:** [Location-specific safety advice]
 
-**EXAMPLE OF GOOD LOCAL RECOMMENDATIONS:**
-❌ BAD: "Explore Old Delhi markets"
+**EXAMPLE OF GOOD LOCAL RECOMMENDATIONS AND MAPS:**
+❌ BAD: "Explore Old Delhi markets with links: [Chandni Chowk](map_link)"
 ✅ GOOD: 
+**Local Recommendations column:**
 **What to do specifically:** • Start at Chandni Chowk metro, walk to Paranthe Wali Gali (try Pandit Gaya Prasad's parathas, INR 80-120) • Then Karim's for kebabs (INR 200-300) • Finish with jalebi at Old Famous Jalebi Wala (INR 50-100) **Why for couple:** • Iconic, bustling, and safe in daylight • Perfect for food lovers to share dishes • Great photo opportunities together
+
+**Maps column (separate):**
+• [Paranthe Wali Gali](https://www.google.com/maps/search/Paranthe+Wali+Gali+Chandni+Chowk+Old+Delhi+Delhi+India) • [Karim's](https://www.google.com/maps/search/Karims+Restaurant+Gali+Kababian+Jama+Masjid+Old+Delhi+Delhi+India) • [Old Famous Jalebi Wala](https://www.google.com/maps/search/Old+Famous+Jalebi+Wala+Dariba+Corner+Chandni+Chowk+Old+Delhi+Delhi+India)
 
 **EXAMPLE OF NIGHTLIFE RECOMMENDATIONS:**
 ✅ **Evening/Nightlife Activity:**
@@ -204,7 +218,10 @@ First, identify and extract these parameters from the user's natural language qu
 - Provide 3-4 activities max per day with proper buffers
 - Include specific local knowledge and insider tips
 - Show realistic travel times and distances
-- Consider traffic patterns and local conditions"""
+- Consider traffic patterns and local conditions
+- After the last day's table, move directly to Budget Breakdown section
+- DO NOT add any suggestions or comments about remaining days"""
+
 
         # Search using Perplexity with the combined extraction and planning prompt
         results = perplexity_service.search(

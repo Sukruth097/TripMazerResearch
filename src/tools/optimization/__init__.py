@@ -17,7 +17,6 @@ from .AccomidationPlanner import search_accommodations
 from .IternaryPlanning import plan_itinerary
 from .RestaurantsSearch import search_restaurants
 from .TravelOptimization import travel_search_tool
-
 # Export all tools for easy importing
 __all__ = [
     "search_accommodations",
@@ -48,10 +47,10 @@ TOOL_DESCRIPTIONS = {
         "output": "Restaurant tables with Time|Location|Restaurant|Cuisine|Price|Dietary|Maps",
         "example": "Search restaurants for Tokyo itinerary with veg and non-veg preferences"
     },
-    
+
     "travel_search_tool": {
-        "description": "Advanced travel search with SERP API flights + Perplexity ground transport",
-        "input": "JSON string with structured travel search parameters",
+        "description": "Advanced travel optimization with SERP API flights + Perplexity ground transport",
+        "input": "Natural language query with travel details, automatically decides flight vs ground transport",
         "output": "Smart transportation recommendations with real flight pricing and comprehensive options",
         "example": "Search travel options using TravelSearchParams entity",
         "features": ["SERP API flight pricing", "Clean architecture", "Budget-aware decisions", "Structured parameters"]
@@ -133,9 +132,9 @@ def plan_complete_trip(
         
         # Step 3: Optimize travel (deprecated - use agent instead)
         if travel_optimization_query:
-            print("Travel optimization via complete trip planner is deprecated.")
-            print("Please use the TripOptimizationAgent for travel planning.")
-            results['travel'] = "Use TripOptimizationAgent for travel planning with structured parameters."
+            print("Optimizing travel...")
+            travel_result = travel_search_tool.invoke({"query": travel_optimization_query})
+            results['travel'] = travel_result
             
         print("Complete trip planning finished!")
         return results

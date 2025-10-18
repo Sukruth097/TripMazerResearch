@@ -47,7 +47,7 @@ from tools.optimization import (
     search_restaurants
 )
 
-# Import the  travel optimization (replaces old optimize_travel)
+# Import the hybrid travel optimization (replaces old optimize_travel)
 from tools.optimization.TravelOptimization import travel_search_tool
 
 # Initialize FastAPI app
@@ -371,7 +371,7 @@ async def get_agent_info():
             "recent_updates": [
                 "Improved restaurant budget allocation (15% → 25%)",
                 "Added budget_hint parameter to restaurant search",
-                "Replaced optimize_travel with hybrid_travel_optimization",
+                "Replaced optimize_travel with travel_search_tool for hybrid optimization",
                 "Enhanced budget allocation with 10% minimum for restaurants",
                 "Added comprehensive logging system",
                 "Fixed Unicode handling in logs"

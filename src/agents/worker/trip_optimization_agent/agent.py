@@ -11,7 +11,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..', '..', '..'))
 
 from langgraph.graph import StateGraph, END
 from langchain_core.messages import HumanMessage, AIMessage
-from langchain.schema import BaseMessage
+# from langchain.schema import BaseMessage
 from dotenv import load_dotenv
 # Import optimization tools
 from src.tools.optimization import (
