@@ -37,54 +37,75 @@ def _get_perplexity_service() -> PerplexityService:
         raise ValueError("PERPLEXITY_API_KEY environment variable is required")
     return PerplexityService(api_key)
 @tool
-def search_restaurants(itinerary_details: str, dates: str, dietary_preferences: str = "", budget_hint: str = "") -> str:
+def search_restaurants(location: str, dates: str = "", dietary_preferences: str = "veg and non-veg", 
+                      budget_hint: str = "", travelers: int = 2, itinerary_details: str = "") -> str:
     """
-    Search for restaurants based on itinerary details and dietary preferences.
+    Search for restaurants in a specific location with dietary preferences and budget.
     
-    This tool analyzes an itinerary plan and suggests restaurants for each location and time,
-    considering dietary preferences, budget constraints, and local cuisine options.
+    This tool works in TWO modes:
+    1. **Independent Mode**: Search restaurants for a location directly
+    2. **Itinerary Mode**: Get restaurants based on day-by-day itinerary (if provided)
     
     Args:
-        itinerary_details: Complete itinerary in JSON/Markdown format from itinerary planner
-        dates: Travel dates in DD-MM-YYYY to DD-MM-YYYY format
-        dietary_preferences: Dietary preferences like "veg only", "veg and non-veg", "non-veg only", etc.
-        budget_hint: Optional budget guidance like "INR 6250 for 2 people for 3 days" to suggest appropriate price ranges
+        location: City/region to search restaurants (e.g., "Mumbai", "Delhi", "Goa")
+        dates: Travel dates in DD-MM-YYYY to DD-MM-YYYY format (optional)
+        dietary_preferences: "veg only", "veg and non-veg", "non-veg only" (default: "veg and non-veg")
+        budget_hint: Budget like "INR 5000 for 2 people for 3 days" (optional)
+        travelers: Number of people (default: 2)
+        itinerary_details: Optional itinerary for location-specific recommendations
     
     Returns:
         str: Restaurant recommendations in markdown table format with realistic pricing
     
-    Example:
-        itinerary = "Day 1 - Tokyo: Visit Senso-ji Temple (9:00 AM), Nakamise Shopping (12:00 PM)"
-        dates = "25-12-2025 to 28-12-2025"
-        preferences = "veg and non-veg"
-        result = search_restaurants(itinerary, dates, preferences)
-      
+    Example Independent Usage:
+        # Find best seafood restaurants in Mumbai
+        result = search_restaurants(
+            location="Mumbai",
+            dietary_preferences="non-veg only",
+            budget_hint="INR 3000 per person",
+            travelers=2
+        )
         
-        # Restaurant Recommendations
-        
-        ## Extracted Information
-        - **Travel Dates:** 25-12-2025 to 28-12-2025
-        - **Dietary Preferences:** veg and non-veg
-        - **Locations:** Tokyo (Senso-ji Temple, Nakamise Shopping)
-        
-        ---
-        
-        ## Day 1 - December 25, 2025 | Tokyo
-        
-        | Time | Location | Restaurant | Cuisine | Price Range | Dietary Options | Maps |
-        |------|----------|------------|---------|-------------|-----------------|------|
-        | 8:00 AM | Near Senso-ji Temple | Temple Breakfast Cafe | Japanese | $15-25 | Veg & Non-veg | [Temple Breakfast Cafe](https://maps.google.com/search/Temple+Breakfast+Cafe+Senso-ji+Tokyo) |
-        | 1:00 PM | Nakamise Shopping Area | Traditional Ramen House | Japanese Ramen | $10-20 | Veg & Non-veg options | [Traditional Ramen House](https://maps.google.com/search/Ramen+House+Nakamise+Tokyo) |
-        | 7:00 PM | Asakusa District | Sushi Master | Sushi | $30-50 | Fresh seafood & veg options | [Sushi Master](https://maps.google.com/search/Sushi+Master+Asakusa+Tokyo) |
+    Example Itinerary-Based Usage:
+        itinerary = "Day 1: Gateway of India (10 AM), Marine Drive (4 PM)"
+        result = search_restaurants(
+            location="Mumbai", 
+            dates="25-12-2025 to 27-12-2025",
+            dietary_preferences="veg and non-veg",
+            itinerary_details=itinerary
+        )
     """
     try:
-        # Get Perplexity service
-        perplexity_service = _get_perplexity_service()
+        # Get Perplexity service from centralized utility
+        from src.utils.service_initializer import get_perplexity_service
+        perplexity_service = get_perplexity_service()
+        
+        # Determine mode: Independent or Itinerary-based
+        search_mode = "itinerary-based" if itinerary_details else "independent"
         
         # Create comprehensive system prompt for restaurant recommendations
         system_prompt = f"""You are an expert restaurant consultant and food advisor with deep knowledge of local cuisines and dining options.
 
-**TASK: Analyze the provided itinerary and recommend restaurants for each location and time**
+**SEARCH MODE:** {search_mode.upper()}
+**LOCATION:** {location}
+**DIETARY PREFERENCES:** {dietary_preferences if dietary_preferences else "No specific preferences"}
+**BUDGET:** {budget_hint if budget_hint else "No specific budget - suggest varied price ranges"}
+**TRAVELERS:** {travelers} person{'s' if travelers > 1 else ''}
+
+{'**ITINERARY CONTEXT:** ' + itinerary_details if itinerary_details else '**INDEPENDENT SEARCH:** Find best restaurants in ' + location}
+
+**TASK: Recommend restaurants based on mode**
+
+**MODE 1 - INDEPENDENT SEARCH (No itinerary provided):**
+- Recommend TOP restaurants in {location} for {dietary_preferences} preferences
+- Categorize by meal types (Breakfast, Lunch, Dinner) and cuisine types
+- Include must-visit local specialties and popular spots
+- Provide diverse price ranges from budget to fine dining
+
+**MODE 2 - ITINERARY-BASED (Itinerary provided):**
+- Parse itinerary to extract locations and times
+- Match restaurants near each activity location
+- Align with meal times from itinerary schedule
 
 **INPUT ANALYSIS:**
 - Itinerary Details: {itinerary_details}
@@ -163,11 +184,38 @@ def search_restaurants(itinerary_details: str, dates: str, dietary_preferences: 
 - Use correct currency throughout (INR for Indian locations, USD for international)
 - Ensure all restaurant suggestions align with specified dietary preferences
 - Provide clickable Google Maps links for each restaurant
-- Consider meal timing logically with itinerary activities"""
+- Consider meal timing logically with itinerary activities (if provided)"""
+
+        # Build search query based on mode
+        if itinerary_details:
+            # Itinerary-based search
+            search_query = f"""Find restaurants based on this itinerary:
+{itinerary_details}
+
+Dates: {dates if dates else 'Not specified'}
+Dietary Preferences: {dietary_preferences}
+Travelers: {travelers}
+Budget: {budget_hint if budget_hint else 'Flexible'}
+
+Provide restaurant recommendations near each activity location with meal timings."""
+        else:
+            # Independent location-based search
+            search_query = f"""Find the best restaurants in {location} for {travelers} person{'s' if travelers > 1 else ''}.
+
+Dietary Preferences: {dietary_preferences}
+Budget: {budget_hint if budget_hint else 'Varied price ranges from budget to fine dining'}
+Dates: {dates if dates else 'General recommendations'}
+
+Provide diverse restaurant options categorized by:
+1. Breakfast spots
+2. Lunch recommendations  
+3. Dinner options
+4. Local specialties and must-try cuisines
+5. Different price ranges (budget, mid-range, fine dining)"""
 
         # Search using Perplexity
         results = perplexity_service.search(
-            query=f"Recommend restaurants based on this itinerary: {itinerary_details}. Dates: {dates}. Dietary preferences: {dietary_preferences}",
+            query=search_query,
             system_prompt=system_prompt,
             temperature=0.1
         )

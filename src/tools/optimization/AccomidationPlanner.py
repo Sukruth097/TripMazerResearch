@@ -17,41 +17,133 @@ src_dir = os.path.join(current_dir, '..', '..')
 sys.path.insert(0, src_dir)
 
 from langchain.tools import tool
+from src.services.perplexity_service import PerplexityService
+from src.utils.service_initializer import get_perplexity_service, get_serp_api_service
 
-# Handle relative imports for both direct execution and when imported from main.py
-try:
-    from src.services.perplexity_service import PerplexityService
-except ImportError:
+
+def _search_hotels_with_serp(location: str, check_in_date: str, check_out_date: str,
+                             adults: int = 2, children: int = 0, currency: str = "INR") -> str:
+    """
+    Search hotels using SERP API and return formatted results.
+    
+    Args:
+        location: Destination city/location
+        check_in_date: Check-in date in YYYY-MM-DD format
+        check_out_date: Check-out date in YYYY-MM-DD format
+        adults: Number of adults (default 2)
+        children: Number of children (default 0)
+        currency: Currency code - "INR" or "USD" (default "INR")
+        
+    Returns:
+        Formatted markdown string with top 5 hotel results
+    """
     try:
-        from services.perplexity_service import PerplexityService
-    except ImportError:
-        # If still failing, try absolute path
-        sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
-        from services.perplexity_service import PerplexityService
+        # Get SERP service
+        serp_service = get_serp_api_service()
+        
+        # Search hotels
+        hotel_results = serp_service.search_hotels(
+            location=location,
+            check_in_date=check_in_date,
+            check_out_date=check_out_date,
+            currency=currency,
+            country_code="in" if currency == "INR" else "us",
+            adults=adults,
+            children=children,
+            language="en",
+            vacation_rentals="true",
+            sort_by=[13, 3, 8],  # Rating, Price, Distance
+            no_cache="true"
+        )
+        
+        # Format results
+        if 'error' in hotel_results:
+            return f"\n\n---\n\n## SERP Hotel Search Results\n\n**Error:** {hotel_results['error']}"
+        
+        if 'properties' not in hotel_results or not hotel_results['properties']:
+            return "\n\n---\n\n## SERP Hotel Search Results\n\nNo hotels found."
+        
+        # Get top 5 hotels
+        properties = hotel_results['properties'][:5]
+        
+        # Build markdown table
+        currency_symbol = "₹" if currency == "INR" else "$"
+        
+        output = f"\n\n---\n\n## Top 5 SERP Hotel Recommendations\n\n"
+        output += f"**Search Parameters:** {location} | Check-in: {check_in_date} | Check-out: {check_out_date} | Guests: {adults} adults"
+        if children > 0:
+            output += f", {children} children"
+        output += "\n\n"
+        
+        # Create table header
+        output += "| # | Hotel Name | Rating | Price/Night | Hotel Class | Key Amenities | Booking Link |\n"
+        output += "|---|------------|--------|-------------|-------------|---------------|-------------|\n"
+        
+        # Add hotel rows
+        for i, hotel in enumerate(properties, 1):
+            name = hotel.get('name', 'N/A')
+            rating = hotel.get('overall_rating', 'N/A')
+            reviews = hotel.get('reviews', 0)
+            
+            # Get price
+            price_info = hotel.get('total_rate', {})
+            if isinstance(price_info, dict):
+                price = price_info.get('lowest', 'N/A')
+            else:
+                price = 'N/A'
+            
+            price_str = f"{currency_symbol}{price}" if price != 'N/A' else 'N/A'
+            
+            hotel_class = hotel.get('hotel_class', 'N/A')
+            hotel_class_str = f"{hotel_class}⭐" if hotel_class != 'N/A' else 'N/A'
+            
+            # Get amenities (first 3)
+            amenities = hotel.get('amenities', [])
+            amenities_str = ", ".join(amenities[:3]) if amenities else "N/A"
+            
+            # Get booking link
+            link = hotel.get('link', '#')
+            link_str = f"[View Details]({link})"
+            
+            # Format rating with reviews
+            rating_str = f"{rating} ({reviews} reviews)" if rating != 'N/A' else 'N/A'
+            
+            output += f"| {i} | {name} | {rating_str} | {price_str} | {hotel_class_str} | {amenities_str} | {link_str} |\n"
+        
+        output += "\n*Prices shown are per night for the entire property. Data from Google Hotels via SERP API.*\n"
+        
+        return output
+        
+    except Exception as e:
+        print(f"SERP hotel search error: {e}")
+        import traceback
+        traceback.print_exc()
+        return f"\n\n---\n\n## SERP Hotel Search Results\n\n**Error:** {str(e)}"
 
-
-def _get_perplexity_service() -> PerplexityService:
-    """Get initialized Perplexity service instance."""
-    # Get API key from environment variable
-    api_key = os.getenv('PERPLEXITY_API_KEY')
-    if not api_key:
-        raise ValueError("PERPLEXITY_API_KEY environment variable is required")
-    return PerplexityService(api_key)
 
 
 @tool
-def search_accommodations(query: str) -> str:
+def search_accommodations(query: str, location: str = None, check_in_date: str = None, 
+                         check_out_date: str = None, adults: int = 2, 
+                         children: int = 0, currency: str = "INR") -> str:
     """
     Search for accommodation options based on natural language query.
     
     This tool extracts accommodation requirements from a natural language query and uses
     Perplexity AI to find the best accommodation options with detailed recommendations.
+    Additionally, it searches SERP API for structured hotel data when parameters are provided.
     
     Args:
         query: Natural language query describing accommodation needs
+        location: Destination city/location for SERP search (optional)
+        check_in_date: Check-in date in YYYY-MM-DD format for SERP search (optional)
+        check_out_date: Check-out date in YYYY-MM-DD format for SERP search (optional)
+        adults: Number of adults for SERP search (default 2)
+        children: Number of children for SERP search (default 0)
+        currency: Currency code for SERP search - "INR" or "USD" (default "INR")
     
     Returns:
-        str: Detailed accommodation recommendations in markdown format
+        str: Detailed accommodation recommendations in markdown format (Perplexity + SERP results)
     
     Example:
         >>> query = "Find hotels in Paris for 2 people from 26-11-2025 to 30-11-2025 with budget $500 and prefer wifi and breakfast"
@@ -103,7 +195,7 @@ def search_accommodations(query: str) -> str:
     """
     try:
         # Get Perplexity service
-        perplexity_service = _get_perplexity_service()
+        perplexity_service = get_perplexity_service()
         
         # Create comprehensive system prompt that extracts AND searches
         system_prompt = """You are an expert accommodation planner and travel advisor with data extraction capabilities.
@@ -200,6 +292,18 @@ Always provide current, accurate information with specific details about availab
         if isinstance(results, dict) and 'error' in results:
             return f"## Error in Accommodation Search\n\n{results['error']}"
         
+        # Add SERP hotel results if parameters are provided
+        if location and check_in_date and check_out_date:
+            serp_results = _search_hotels_with_serp(
+                location=location,
+                check_in_date=check_in_date,
+                check_out_date=check_out_date,
+                adults=adults,
+                children=children,
+                currency=currency
+            )
+            return results + serp_results
+        
         return results
         
     except Exception as e:
@@ -207,28 +311,66 @@ Always provide current, accurate information with specific details about availab
 
 
 if __name__ == "__main__":
+    # Test 1: Perplexity only (no SERP parameters)
     test_query = """
-    I need accommodation in bangalore to Delhi  for 3 people 
-    from 15-12-2025 to 22-12-2025 with a budget of 30000 rupees overall. 
-    I prefer hotels with wifi, breakfast included, and near to transport.
+    I need accommodation in Goa for 2 people 
+    from 19-11-2025 to 22-11-2025 with a budget of 15000 rupees. 
+    I prefer hotels with wifi, breakfast included, and beach view.
     """
     
-    print("Testing Accommodation Planner...")
+    print("="*80)
+    print("TEST 1: PERPLEXITY SEARCH ONLY (No SERP parameters)")
+    print("="*80)
     print(f"\nQuery: {test_query.strip()}")
     print("\n" + "="*60)
-    print("ACCOMMODATION SEARCH RESULTS")
-    print("="*60 + "\n")
     
     try:
-        # Use invoke method instead of direct call to avoid deprecation warning
+        # Test without SERP parameters - only Perplexity
         result = search_accommodations.invoke({"query": test_query})
         print(result)
         print("\n" + "="*60)
-        print("Test completed successfully!")
+        print("Test 1 completed successfully!")
     except Exception as e:
         print(f"Error occurred: {str(e)}")
-        print("\nTroubleshooting:")
-        print("- Replace the placeholder API key with your actual Perplexity API key")
-        print("- Check your internet connection")
-        print("- Verify your Perplexity API key is valid")
-        print("- Ensure you have sufficient API credits")
+        import traceback
+        traceback.print_exc()
+    
+    print("\n\n")
+    
+    # Test 2: Full search with both Perplexity and SERP (with parameters)
+    print("="*80)
+    print("TEST 2: PERPLEXITY + SERP SEARCH (With manual parameters)")
+    print("="*80)
+    print(f"\nQuery: {test_query.strip()}")
+    print("\nSERP Parameters:")
+    print("  - location: Goa")
+    print("  - check_in_date: 2025-11-19")
+    print("  - check_out_date: 2025-11-22")
+    print("  - adults: 2")
+    print("  - children: 0")
+    print("  - currency: INR")
+    print("\n" + "="*60)
+    
+    try:
+        # Test with SERP parameters - Perplexity + SERP
+        result = search_accommodations.invoke({
+            "query": test_query,
+            "location": "Goa",
+            "check_in_date": "2025-11-19",
+            "check_out_date": "2025-11-22",
+            "adults": 2,
+            "children": 0,
+            "currency": "INR"
+        })
+        print(result)
+        print("\n" + "="*60)
+        print("Test 2 completed successfully!")
+    except Exception as e:
+        print(f"Error occurred: {str(e)}")
+        import traceback
+        traceback.print_exc()
+    
+    print("\n\nTroubleshooting:")
+    print("- Ensure PERPLEXITY_API_KEY and SERP_API_KEY are set in your .env file")
+    print("- Check your internet connection")
+    print("- Verify API keys are valid and have sufficient credits")

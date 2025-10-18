@@ -4,9 +4,8 @@ Travel Search Parameter Entity
 Structured entity for passing travel search parameters between agent and tools.
 """
 
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass
 from typing import List, Optional, Dict, Any
-import json
 
 
 @dataclass
@@ -49,21 +48,6 @@ class TravelSearchParams:
     # Airport Codes (resolved by agent using LLM)
     origin_airport: Optional[str] = None
     destination_airport: Optional[str] = None
-    
-    def to_json(self) -> str:
-        """Convert to JSON string for tool parameter passing"""
-        return json.dumps(asdict(self), indent=2)
-    
-    @classmethod
-    def from_json(cls, json_str: str) -> 'TravelSearchParams':
-        """Create instance from JSON string"""
-        data = json.loads(json_str)
-        return cls(**data)
-    
-    @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'TravelSearchParams':
-        """Create instance from dictionary"""
-        return cls(**data)
     
     def validate(self) -> List[str]:
         """Validate parameters and return list of errors"""
@@ -111,9 +95,17 @@ params = TravelSearchParams(
     budget_priority="tight"
 )
 
-# Pass to tool:
-results = travel_search_tool(params.to_json())
-
-# In Tool:
-parsed_params = TravelSearchParams.from_json(json_params)
+# Pass to tool directly with parameters:
+results = travel_search_tool(
+    origin=params.origin,
+    destination=params.destination,
+    departure_date=params.departure_date,
+    transport_modes=params.transport_modes,
+    travelers=params.travelers,
+    budget_limit=params.budget_limit,
+    currency=params.currency,
+    origin_airport=params.origin_airport,
+    destination_airport=params.destination_airport,
+    is_domestic=params.is_domestic
+)
 """

@@ -16,15 +16,14 @@ and provide comprehensive markdown outputs with Google Maps integration.
 from .AccomidationPlanner import search_accommodations
 from .IternaryPlanning import plan_itinerary
 from .RestaurantsSearch import search_restaurants
-from .TravelOptimization import optimize_travel, hybrid_travel_optimization
+from .TravelOptimization import travel_search_tool
 
 # Export all tools for easy importing
 __all__ = [
     "search_accommodations",
     "plan_itinerary", 
     "search_restaurants",
-    "optimize_travel",
-    "hybrid_travel_optimization"
+    "travel_search_tool"
 ]
 
 # Tool descriptions for documentation
@@ -50,12 +49,12 @@ TOOL_DESCRIPTIONS = {
         "example": "Search restaurants for Tokyo itinerary with veg and non-veg preferences"
     },
     
-    "hybrid_travel_optimization": {
-        "description": "Advanced travel optimization with SERP API flights + Perplexity ground transport",
-        "input": "Natural language query with travel details, automatically decides flight vs ground transport",
+    "travel_search_tool": {
+        "description": "Advanced travel search with SERP API flights + Perplexity ground transport",
+        "input": "JSON string with structured travel search parameters",
         "output": "Smart transportation recommendations with real flight pricing and comprehensive options",
-        "example": "Plan trip from Delhi to Bangalore for 2 people, budget INR 30000, prefer flights",
-        "features": ["SERP API flight pricing", "Gemini natural language understanding", "Budget-aware decisions", "Clean output"]
+        "example": "Search travel options using TravelSearchParams entity",
+        "features": ["SERP API flight pricing", "Clean architecture", "Budget-aware decisions", "Structured parameters"]
     }
 }
 
@@ -132,11 +131,11 @@ def plan_complete_trip(
             })
             results['restaurants'] = restaurant_result
         
-        # Step 3: Optimize travel
+        # Step 3: Optimize travel (deprecated - use agent instead)
         if travel_optimization_query:
-            print("Optimizing travel...")
-            travel_result = hybrid_travel_optimization.invoke({"query": travel_optimization_query})
-            results['travel'] = travel_result
+            print("Travel optimization via complete trip planner is deprecated.")
+            print("Please use the TripOptimizationAgent for travel planning.")
+            results['travel'] = "Use TripOptimizationAgent for travel planning with structured parameters."
             
         print("Complete trip planning finished!")
         return results

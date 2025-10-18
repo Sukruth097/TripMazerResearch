@@ -13,26 +13,8 @@ src_dir = os.path.join(current_dir, '..', '..')
 sys.path.insert(0, src_dir)
 
 from langchain.tools import tool
+from src.utils.service_initializer import get_perplexity_service
 
-# Handle relative imports for both direct execution and when imported from main.py
-try:
-    from src.services.perplexity_service import PerplexityService
-except ImportError:
-    try:
-        from services.perplexity_service import PerplexityService
-    except ImportError:
-        # If still failing, try absolute path
-        sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
-        from services.perplexity_service import PerplexityService
-
-
-def _get_perplexity_service() -> PerplexityService:
-    """Get initialized Perplexity service instance."""
-    # Get API key from environment variable
-    api_key = os.getenv('PERPLEXITY_API_KEY')
-    if not api_key:
-        raise ValueError("PERPLEXITY_API_KEY environment variable is required")
-    return PerplexityService(api_key)
 
 
 @tool
@@ -96,7 +78,7 @@ def plan_itinerary(query: str) -> str:
     """
     try:
         # Get Perplexity service
-        perplexity_service = _get_perplexity_service()
+        perplexity_service = get_perplexity_service()
         
         # Create comprehensive system prompt that extracts AND plans itinerary
         system_prompt = """You are an expert travel itinerary planner and local guide with deep knowledge of specific locations, distances, and practical travel advice.
@@ -109,6 +91,7 @@ First, identify and extract these parameters from the user's natural language qu
 - Budget: Budget amount with appropriate currency (see currency rules below)
 - Travel Dates: When they're traveling (extract any date mentions)
 - Preferred Activities: Any activities mentioned (beach, mountains, nightclub, pubs, temples, shopping, nightlife, bars, disco, etc.)
+- Dietary Preferences: Food preferences if mentioned (vegetarian/veg only, non-veg, vegan, halal, kosher, gluten-free, or "veg and non-veg" if not specified)
 
 **CURRENCY DETECTION RULES:**
 - If BOTH from location AND destination are Indian regions/cities: Use INR (Indian Rupees)
@@ -117,7 +100,7 @@ First, identify and extract these parameters from the user's natural language qu
 **STEP 2: Create comprehensive day-by-day itinerary with LOCAL EXPERTISE**
 
 **CRITICAL REQUIREMENTS:**
-1. **COMPLETE DAY PLANNING**: Plan activities from morning to night (8 AM to 10-11 PM)
+1. **COMPLETE DAY PLANNING**: Plan activities from morning to night (8 AM to 10-11 PM) also if user mentioned any midnight requirements consider that as well
 2. **NIGHTLIFE INTEGRATION**: If user mentions nightlife, pubs, bars, disco, or nightclub:
    - Include evening activities (6 PM onwards) with specific venue recommendations
    - For Delhi: Hauz Khas Village, Connaught Place, Cyber Hub, Khan Market
@@ -125,7 +108,7 @@ First, identify and extract these parameters from the user's natural language qu
    - For Bangalore: Koramangala, Indiranagar, Brigade Road
    - Include entry fees, drink prices, and timing details
 3. **DETAILED LOCAL RECOMMENDATIONS**: Instead of generic descriptions, provide specific insider tips:
-   - For markets: "In Chandni Chowk, start at Kinari Bazaar for wedding items, then head to Dariba Kalan for silver jewelry, and end at Katra Neel for fabrics"
+   - For markets: "In Chandni Chowk, start at Kinari Bazaar for wedding items, then head to Dariba Kalan for silver jewelry, and end at Katra Neel for fabrics also add the eatery places"
    - For temples: "At Jama Masjid, climb the southern minaret (INR 25) for city views, visit the courtyard during afternoon prayers for cultural experience"
    - For neighborhoods: "In Hauz Khas Village, start at Social for drinks, then Yeti for live music, end at PCO for late-night dancing"
 
@@ -133,10 +116,11 @@ First, identify and extract these parameters from the user's natural language qu
    - Distance in KM between activities
    - Actual travel time considering traffic
    - Mode of transport recommendation
+   - Get the distance information right from Google Maps
    - Format: "[Activity] → [Next Activity]: 12km, 25-30 mins by metro/taxi"
 
 5. **REALISTIC SCHEDULING**: Consider fatigue and practical constraints:
-   - Plan activities from morning (8-9 AM) to late evening (10-11 PM)
+   - Plan activities from morning (8-9 AM) to late evening (10-11 PM) also if any early morning or midnight activities mentioned include those as well based on user preferences/query.
    - Maximum 4-5 activities per day including evening/nightlife
    - Include 30-45 minute buffers between activities
    - Account for meal times, rest, and traffic
@@ -151,7 +135,7 @@ First, identify and extract these parameters from the user's natural language qu
    - Example: https://www.google.com/maps/search/Jama+Masjid+Delhi+India
    - Test format: [Place Name](https://www.google.com/maps/search/Place+Name+City+Country)
 
-5. **BUDGET UTILIZATION**: Aim to use most of the available budget for comprehensive experiences
+5. **BUDGET UTILIZATION**: Aim to use most of the available budget for comprehensive experiences based on user preferences.
 
 **Response Format (MANDATORY):**
 
@@ -164,6 +148,7 @@ First, identify and extract these parameters from the user's natural language qu
 - **Budget:** [Currency][Amount] [Currency Code]
 - **Dates:** [extracted dates]
 - **Preferred Activities:** [list extracted activities or "None specified"]
+- **Dietary Preferences:** [veg only/non-veg/vegan/veg and non-veg/halal/kosher/gluten-free or "No specific preferences"]
 
 ---
 
@@ -173,7 +158,6 @@ First, identify and extract these parameters from the user's natural language qu
 |------|----------|------------------------------|-------------------|---------|------|
 | [Time] | [Activity Name] | **What to do specifically:** • [First specific tip with prices] • [Second specific tip] • [Third specific tip] **Why for [travel type]:** • [First reason] • [Second reason] | **From previous:** [X]km, [Y] mins by [transport] | **Best time:** [Morning/Afternoon/Evening] **Conditions:** [Weather considerations] | [[Activity Name](https://www.google.com/maps/search/Activity+Name+City+Country)] |
 
-**Travel Buffer:** 30-45 minutes between activities for travel, traffic, and rest
 
 ## Day 2 - [Date]
 
