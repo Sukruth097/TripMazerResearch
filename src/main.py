@@ -13,7 +13,7 @@ sys.path.insert(0, parent_dir)
 
 # Import the optimization tools with proper error handling
 try:
-    from tools.optimization.TravelOptimization import optimize_travel
+    from tools.optimization.TravelOptimization import travel_search_tool
     from tools.optimization.AccomidationPlanner import search_accommodations
     from tools.optimization.RestaurantsSearch import search_restaurants
     from tools.optimization.IternaryPlanning import plan_itinerary
@@ -368,7 +368,7 @@ def trip_planning_section():
                     """
                     
                     # Call the optimization tool
-                    results = optimize_travel(query)
+                    results = travel_search_tool.invoke({"query": query})
                     
                     # Store results in session state
                     st.session_state.trip_data = {
@@ -450,7 +450,21 @@ def accommodations_section():
                     and {room_type} room type
                     """
                     
-                    results = search_accommodations(query)
+                    # Extract parameters for SERP hotel search
+                    check_in_str = checkin_date.strftime('%Y-%m-%d')
+                    check_out_str = checkout_date.strftime('%Y-%m-%d')
+                    currency = "INR"  # Default to INR for India, can be enhanced based on destination
+                    
+                    # Call tool with both query and extracted parameters using invoke
+                    results = search_accommodations.invoke({
+                        "query": query,
+                        "location": destination,
+                        "check_in_date": check_in_str,
+                        "check_out_date": check_out_str,
+                        "adults": guests,
+                        "children": 0,
+                        "currency": currency
+                    })
                     
                     st.success("✅ Accommodations found!")
                     st.markdown("### 🏨 Accommodation Options")

@@ -18,8 +18,11 @@ from src.tools.optimization import (
     search_accommodations, 
     plan_itinerary, 
     search_restaurants, 
-    hybrid_travel_optimization
+    travel_search_tool
 )
+
+# Import travel search entity
+from src.entity.travel_search_params import TravelSearchParams
 
 # Import state manager
 from src.state.state_manager import get_state_manager, reset_state
@@ -47,15 +50,15 @@ class TripOptimizationAgent:
         if enable_logging:
             self._setup_logging()
         
-        # Default tool routing order
-        self.default_sequence = ["itinerary", "travel", "accommodation", "restaurant"]
+        # Default tool routing order (restaurant removed - available via API only)
+        self.default_sequence = ["itinerary", "travel", "accommodation"]
         
         # Tool mapping
         self.tools = {
             "accommodation": search_accommodations,
             "itinerary": plan_itinerary,
             "restaurant": search_restaurants,
-            "travel": hybrid_travel_optimization
+            "travel": travel_search_tool
         }
         
         # Execution tracking
@@ -188,6 +191,443 @@ class TripOptimizationAgent:
         client = genai.Client(api_key=api_key)
         return client
     
+    def extract_travel_parameters_with_gemini(self, query: str) -> TravelSearchParams:
+        """
+        Extract travel search parameters using Gemini AI.
+        
+        This method handles the parameter extraction that was previously done in tools.
+        Now the agent takes responsibility for AI-powered parameter extraction.
+        
+        Args:
+            query: Natural language travel query
+            
+        Returns:
+            TravelSearchParams entity with extracted parameters
+        """
+        self.logger.info("Extracting travel parameters with Gemini...")
+        
+        try:
+            client = self._get_gemini_client()
+            
+            prompt = f"""
+            TASK: Extract travel search parameters from natural language query.
+            
+            QUERY: "{query}"
+            
+            Extract the following parameters and return as JSON:
+            
+            {{
+                "origin": "departure city/location",
+                "destination": "arrival city/location", 
+                "departure_date": "YYYY-MM-DD format",
+                "return_date": "YYYY-MM-DD format or null for one-way",
+                "travelers": "number of travelers",
+                "budget_limit": "budget amount (number only) or null",
+                "currency": "INR for Indian routes, USD for international",
+                "transport_modes": ["flight", "bus", "train"] - include all relevant modes,
+                "preferred_mode": "user's preferred transport mode or null",
+                "trip_type": "round_trip or one_way",
+                "is_domestic": true/false,
+                "budget_priority": "tight/moderate/flexible",
+                "time_sensitivity": "urgent/moderate/flexible"
+            }}
+            
+            RULES:
+            1. Extract locations as mentioned (currency and domestic/international will be resolved separately)
+            2. Include all relevant transport modes mentioned or ["flight", "bus", "train"] as default
+            3. For budget-conscious queries, set budget_priority="tight"
+            4. Extract actual dates mentioned, convert to YYYY-MM-DD
+            5. If no budget mentioned, set budget_limit=null
+            6. Default travelers=1 if not specified
+            7. Set currency="USD" as placeholder (will be resolved by location analysis)
+            8. Set is_domestic=false as placeholder (will be resolved by location analysis)
+            
+            Return ONLY valid JSON.
+            """
+            
+            response = client.models.generate_content(
+                model="gemini-2.5-pro",
+                contents=prompt
+            )
+            
+            response_text = response.text.strip()
+            
+            # Clean response
+            if response_text.startswith('```json'):
+                response_text = response_text.replace('```json', '').replace('```', '').strip()
+            elif response_text.startswith('```'):
+                response_text = response_text.replace('```', '').strip()
+            
+            # Parse response
+            extracted_data = json.loads(response_text)
+            
+            # Create TravelSearchParams entity
+            params = TravelSearchParams.from_dict(extracted_data)
+            
+            self.logger.info(f"Extracted parameters: {extracted_data}")
+            return params
+            
+        except Exception as e:
+            self.logger.error(f"Parameter extraction failed: {e}")
+            # Fallback to basic parameters
+            return TravelSearchParams(
+                origin="Not specified",
+                destination="Not specified", 
+                departure_date="2024-12-01",
+                transport_modes=["flight", "bus", "train"],
+                travelers=1,
+                currency="USD"
+            )
+    
+    def resolve_airport_codes_and_currency(self, params: TravelSearchParams) -> TravelSearchParams:
+        """
+        Use Gemini to resolve airport codes for any location and determine currency.
+        
+        This replaces the static airport mapping with dynamic LLM-based resolution
+        that can handle any city/region globally.
+        
+        Args:
+            params: TravelSearchParams with city names
+            
+        Returns:
+            Updated TravelSearchParams with airport codes and correct currency
+        """
+        self.logger.info(f"Resolving airport codes and currency for {params.origin} -> {params.destination}")
+        
+        try:
+            client = self._get_gemini_client()
+            
+            prompt = f"""
+            TASK: Resolve airport codes and determine currency for travel locations.
+            
+            ORIGIN: "{params.origin}"
+            DESTINATION: "{params.destination}"
+            
+            For each location, provide:
+            1. Airport code (3-letter IATA code for the nearest major airport)
+            2. Whether it's in India (for currency detection)
+            3. Full city/region name (standardized)
+            
+            RULES:
+            - Use major international airports for cities
+            - For regions/states, use the main airport (e.g., Goa -> GOX, Kerala -> COK)
+            - For small cities, use nearest major airport
+            - Indian locations: Mumbai=BOM, Delhi=DEL, Bangalore=BLR, Chennai=MAA, etc.
+            - International: New York=JFK/LGA, London=LHR, Paris=CDG, Tokyo=NRT, etc.
+            
+            CURRENCY LOGIC:
+            - If EITHER origin OR destination is in India -> "INR"
+            - If BOTH are outside India -> "USD"  
+            - Indian regions/states: All states, Union Territories, major cities in India
+            
+            DOMESTIC vs INTERNATIONAL:
+            - is_domestic: true if BOTH locations are in India
+            - is_international: true if AT LEAST ONE location is outside India
+            
+            Return ONLY valid JSON:
+            {{
+                "origin_airport": "3-letter code",
+                "destination_airport": "3-letter code", 
+                "origin_city": "standardized city name",
+                "destination_city": "standardized city name",
+                "origin_is_indian": true/false,
+                "destination_is_indian": true/false,
+                "currency": "INR or USD",
+                "is_domestic": true/false,
+                "is_international": true/false
+            }}
+            """
+            
+            response = client.models.generate_content(
+                model="gemini-2.5-pro",
+                contents=prompt
+            )
+            
+            response_text = response.text.strip()
+            
+            # Clean response
+            if response_text.startswith('```json'):
+                response_text = response_text.replace('```json', '').replace('```', '').strip()
+            elif response_text.startswith('```'):
+                response_text = response_text.replace('```', '').strip()
+            
+            # Parse response
+            resolution_data = json.loads(response_text)
+            
+            # Update parameters with resolved data
+            params.origin = resolution_data.get('origin_city', params.origin)
+            params.destination = resolution_data.get('destination_city', params.destination) 
+            params.currency = resolution_data.get('currency', 'USD')
+            params.is_domestic = resolution_data.get('is_domestic', False)
+            params.is_international = resolution_data.get('is_international', True)
+            
+            # Store airport codes for use in flight searches
+            params.origin_airport = resolution_data.get('origin_airport', params.origin[:3].upper())
+            params.destination_airport = resolution_data.get('destination_airport', params.destination[:3].upper())
+            
+            self.logger.info(f"Resolved: {params.origin}({params.origin_airport}) -> {params.destination}({params.destination_airport}), Currency: {params.currency}")
+            return params
+            
+        except Exception as e:
+            self.logger.error(f"Airport code resolution failed: {e}")
+            # Fallback: basic logic
+            indian_keywords = ['mumbai', 'delhi', 'bangalore', 'chennai', 'kolkata', 'hyderabad', 'pune', 'goa', 'kerala', 'tamil nadu', 'karnataka', 'maharashtra']
+            
+            origin_is_indian = any(keyword in params.origin.lower() for keyword in indian_keywords)
+            dest_is_indian = any(keyword in params.destination.lower() for keyword in indian_keywords)
+            
+            if origin_is_indian or dest_is_indian:
+                params.currency = 'INR'
+            else:
+                params.currency = 'USD'
+                
+            params.is_domestic = origin_is_indian and dest_is_indian
+            params.is_international = not params.is_domestic
+            
+            # Basic airport codes as fallback
+            params.origin_airport = params.origin[:3].upper()
+            params.destination_airport = params.destination[:3].upper()
+            
+            return params
+    
+    def format_travel_results_with_prompt(self, raw_results: str, user_context: Dict[str, Any]) -> str:
+        """
+        Format travel search results using AI-powered prompt instead of hardcoded methods.
+        
+        This replaces the multiple formatting methods that were in the tools.
+        The agent uses its AI capabilities to intelligently format results.
+        
+        Args:
+            raw_results: Raw JSON results from travel_search_tool
+            user_context: User preferences and context
+            
+        Returns:
+            Formatted travel results as markdown tables
+        """
+        self.logger.info("Formatting travel results with AI...")
+        
+        try:
+            client = self._get_gemini_client()
+            
+            # Parse raw results if it's JSON string
+            if isinstance(raw_results, str):
+                try:
+                    results_data = json.loads(raw_results)
+                except:
+                    results_data = {"raw_text": raw_results}
+            else:
+                results_data = raw_results
+            
+            budget = user_context.get('budget', 'Not specified')
+            currency = user_context.get('currency', 'USD')
+            travelers = user_context.get('travelers', 1)
+            preferred_mode = user_context.get('preferred_mode', 'any')
+            
+            formatting_prompt = f"""
+            TASK: Format travel search results into beautiful, professional markdown tables.
+            
+            USER CONTEXT:
+            - Budget: {budget} {currency}
+            - Travelers: {travelers}
+            - Preferred Transport: {preferred_mode}
+            - Budget Priority: {user_context.get('budget_priority', 'moderate')}
+            
+            RAW RESULTS (Pre-structured for easy formatting):
+            {json.dumps(results_data, indent=2)[:4000]}
+            
+            FLIGHT DATA STRUCTURE (Already extracted and clean):
+            - Flight data is in: results.results.flights.outbound_flights[] and results.results.flights.return_flights[]
+            - Each flight object has these READY-TO-USE fields:
+              * airline: string (e.g., "Akasa Air" or "IndiGo, Air India")
+              * departure_time: string (e.g., "2025-12-01 07:05")
+              * arrival_time: string (e.g., "2025-12-01 09:20")
+              * duration_minutes: integer (e.g., 135)
+              * price_per_person: float (e.g., 10698)
+              * carbon_grams: integer (e.g., 177000)
+            
+            TRAIN DATA STRUCTURE (Already extracted and clean):
+            - Train data is in: results.results.ground_transport.outbound_trains[] and return_trains[]
+            - Each train object has these READY-TO-USE fields:
+              * operator: string (e.g., "Rajdhani Express 12951")
+              * service_type: string (e.g., "2A" or "3A" or "Sleeper")
+              * departure_time: string (e.g., "17:00")
+              * arrival_time: string (e.g., "08:35")
+              * duration_minutes: integer (e.g., 935)
+              * price_per_person: float (e.g., 3500)
+              * platform: string (e.g., "IRCTC" or "MakeMyTrip")
+            
+            BUS DATA STRUCTURE (Already extracted and clean):
+            - Bus data is in: results.results.ground_transport.outbound_buses[] and return_buses[]
+            - Each bus object has these READY-TO-USE fields:
+              * operator: string (e.g., "VRL Travels")
+              * service_type: string (e.g., "AC Sleeper" or "Volvo")
+              * departure_time: string (e.g., "20:00")
+              * arrival_time: string (e.g., "08:00")
+              * duration_minutes: integer (e.g., 1470)
+              * price_per_person: float (e.g., 2000)
+              * platform: string (e.g., "RedBus" or "AbhiBus")
+            
+            TABLE FORMAT REQUIREMENTS:
+            
+            For FLIGHTS - Use this exact table structure:
+            | # | Airline(s) | Departure | Arrival | Duration | Price/Person | Total ({travelers}p) |
+            |---|------------|-----------|---------|----------|--------------|---------------------|
+            | 1 | Akasa Air  | 07:05     | 09:20   | 2h 15m   | ₹10,698     | ₹21,396            |
+            
+            For TRAINS - Use this exact table structure:
+            | # | Train/Class | Departure | Arrival | Duration | Price/Person | Total ({travelers}p) | Platform |
+            |---|-------------|-----------|---------|----------|--------------|---------------------|----------|
+            | 1 | Rajdhani 12951 (2A) | 17:00 | 08:35 | 15h 35m | ₹3,500 | ₹7,000 | IRCTC |
+            
+            For BUSES - Use this exact table structure:
+            | # | Operator/Type | Departure | Arrival | Duration | Price/Person | Total ({travelers}p) | Platform |
+            |---|---------------|-----------|---------|----------|--------------|---------------------|----------|
+            | 1 | VRL Travels (AC Sleeper) | 20:00 | 08:00 | 24h 30m | ₹2,000 | ₹4,000 | RedBus |
+            
+            FORMATTING RULES:
+            - Convert duration_minutes to "Xh Ym" format (e.g., 135 → 2h 15m, 125 → 2h 5m)
+            - Format prices with currency symbol and commas (10698 → ₹10,698)
+            - Calculate total cost = price_per_person × {travelers}
+            - Extract time only from departure_time/arrival_time (e.g., "2025-12-01 07:05" → "07:05")
+            - Use clear section headings with emojis and DATES: 🛫 ✈️ 🚆 🚌
+            - Include journey date in headers: "📤 Outbound Journey (Origin → Destination) - Date"
+            - Include journey date in headers: "📥 Return Journey (Destination → Origin) - Date"
+            - Highlight best value options with ⭐ or 💰 emoji
+            - Add budget status: ✅ Within Budget | ⚠️ Near Limit | ❌ Over Budget
+            
+            OUTPUT STRUCTURE:
+            # ✈️ Travel Search Results
+            
+            ## 🛫 Flight Options
+            
+            ### 📤 Outbound Journey (Origin → Destination) - Departure Date
+            [Clean markdown table with ALL flights from outbound_flights array]
+            
+            **Budget Status:** [Check total cost against budget {budget}]
+            **Recommended:** [Highlight 1-2 best options based on price/value]
+            
+            ### 📥 Return Journey (Destination → Origin) - Return Date
+            [Clean markdown table with ALL flights from return_flights array]
+            
+            **Budget Status:** [Check total cost against budget]
+            **Recommended:** [Highlight 1-2 best options]
+            
+            ## 🚆 Train Options (if available)
+            ### 📤 Outbound Journey (Origin → Destination) - Departure Date
+            [Format ground_transport.outbound_trains[] into table]
+            
+            ### 📥 Return Journey (Destination → Origin) - Return Date
+            [Format ground_transport.return_trains[] into table]
+            
+            ## 🚌 Bus Options (if available)
+            ### 📤 Outbound Journey (Origin → Destination) - Departure Date
+            [Format ground_transport.outbound_buses[] into table]
+            
+            ### 📥 Return Journey (Destination → Origin) - Return Date
+            [Format ground_transport.return_buses[] into table]
+            
+            ## 💰 Cost Summary & Recommendations
+            | Transport Mode | Cheapest Option | Most Convenient | Best Value ⭐ |
+            |----------------|-----------------|-----------------|---------------|
+            
+            **Total Trip Cost Range:** ₹X,XXX - ₹Y,YYY for {travelers} travelers
+            **Budget Remaining:** [Calculate from {budget}]
+            **Booking Recommendations:** [Practical booking advice]
+            
+            Make tables visually clean, well-aligned, and easy to compare options.
+            Process ALL flights in the arrays, not just top 3.
+            """
+            
+            response = client.models.generate_content(
+                model="gemini-2.5-pro",
+                contents=formatting_prompt
+            )
+            
+            formatted_result = response.text.strip()
+            
+            self.logger.info("Travel results formatted successfully")
+            return formatted_result
+            
+        except Exception as e:
+            self.logger.error(f"Result formatting failed: {e}")
+            # Fallback to basic formatting
+            return f"""
+            # Travel Search Results
+            
+            ## Raw Results
+            {str(raw_results)[:1000]}...
+            
+            *Note: AI formatting temporarily unavailable. Raw results shown above.*
+            """
+    
+    def execute_travel_search(self, query: str) -> str:
+        """
+        Main method to execute travel search with new clean architecture.
+        
+        This method demonstrates the new approach:
+        1. Agent extracts parameters using Gemini
+        2. Tool performs pure search orchestration  
+        3. Agent formats results using AI-powered prompts
+        
+        Args:
+            query: Natural language travel query
+            
+        Returns:
+            Formatted travel results
+        """
+        self.logger.info("Executing travel search with clean architecture...")
+        
+        try:
+            # Step 1: Agent extracts parameters (no longer in tool)
+            params = self.extract_travel_parameters_with_gemini(query)
+            
+            # Step 1.5: Resolve airport codes and currency using LLM
+            params = self.resolve_airport_codes_and_currency(params)
+            
+            # Step 2: Validate and adjust parameters based on budget constraints
+            if params.budget_limit and params.budget_limit < 10000 and 'flight' in params.transport_modes:
+                # Remove flights for very low budgets
+                params.transport_modes = [mode for mode in params.transport_modes if mode != 'flight']
+                self.logger.info("Removed flights due to budget constraints")
+            
+            if not params.is_domestic and 'bus' in params.transport_modes:
+                # Remove buses for international routes
+                params.transport_modes = [mode for mode in params.transport_modes if mode not in ['bus', 'train']]
+                self.logger.info("Removed ground transport for international route")
+            
+            # Step 3: Call tool with direct parameters (clean interface)
+            raw_results = travel_search_tool.invoke({
+                "origin": params.origin,
+                "destination": params.destination,
+                "departure_date": params.departure_date,
+                "transport_modes": params.transport_modes,
+                "travelers": params.travelers,
+                "return_date": params.return_date,
+                "budget_limit": params.budget_limit,
+                "currency": params.currency,
+                "origin_airport": params.origin_airport,
+                "destination_airport": params.destination_airport,
+                "is_domestic": params.is_domestic,
+                "trip_type": params.trip_type
+            })
+            
+            # Step 4: Agent formats results (no longer in tool)
+            user_context = {
+                'budget': params.budget_limit,
+                'currency': params.currency,
+                'travelers': params.travelers,
+                'preferred_mode': params.preferred_mode,
+                'budget_priority': params.budget_priority
+            }
+            
+            formatted_results = self.format_travel_results_with_prompt(raw_results, user_context)
+            
+            return formatted_results
+            
+        except Exception as e:
+            self.logger.error(f"Travel search execution failed: {e}")
+            return f"# Travel Search Error\n\nUnable to complete travel search: {str(e)}"
+    
     def _extract_preferences_and_routing(self, query: str) -> Dict[str, Any]:
         """
         Extract user preferences and determine tool routing order from query using Google Gemini.
@@ -231,39 +671,47 @@ class TripOptimizationAgent:
 
             6. **travelers**: EXACT number mentioned first ("3 persons", "5 people", "8 travelers"). Fallbacks only if no number: couple=2, family=4, solo=1.
 
-            7. **routing_order**: CRITICAL for budget allocation. Rank tools by user emphasis and budget impact:
+            7. **dietary_preferences**: Extract food preferences if mentioned:
+               - "vegetarian", "veg only", "pure veg" → "veg only"
+               - "non-veg", "non vegetarian" → "non-veg only"
+               - "vegan" → "vegan"
+               - "halal" → "halal"
+               - "both veg and non-veg", "all types" → "veg and non-veg"
+               - If not mentioned → "veg and non-veg" (default)
+
+            8. **routing_order**: CRITICAL for budget allocation. Rank tools by user emphasis and budget impact:
 
             BUDGET-DRIVEN ROUTING RULES:
-            - **High Budget** (>₹50,000 or >$2000): ["accommodation", "itinerary", "travel", "restaurant"] (luxury focus)
-            - **Medium Budget** (₹20,000-₹50,000 or $800-$2000): ["itinerary", "accommodation", "travel", "restaurant"] (balanced)
-            - **Low Budget** (<₹20,000 or <$800): ["travel", "itinerary", "accommodation", "restaurant"] (cost optimization)
-            - **No Budget**: ["itinerary", "travel", "accommodation", "restaurant"] (experience focus)
+            - **High Budget** (>₹50,000 or >$2000): ["accommodation", "itinerary", "travel"] (luxury focus)
+            - **Medium Budget** (₹20,000-₹50,000 or $800-$2000): ["itinerary", "accommodation", "travel"] (balanced)
+            - **Low Budget** (<₹20,000 or <$800): ["travel", "itinerary", "accommodation"] (cost optimization)
+            - **No Budget**: ["itinerary", "travel", "accommodation"] (experience focus)
 
             USER EMPHASIS OVERRIDES:
-            - Food emphasis ("good food", "dining", "cuisine", "veg/non-veg") → restaurant first
+            - Food emphasis ("good food", "dining", "cuisine", "veg/non-veg") → Add "restaurant" tool first
             - Comfort emphasis ("luxury", "comfortable stay", "premium hotels") → accommodation first
             - Activity emphasis ("sightseeing", "activities", "experiences", "adventure") → itinerary first
             - Transport concerns ("prefer trains", "flight booking", "travel options") → travel first
 
             Tools available:
-            - "accommodation": hotels, stays, lodging (30% budget allocation)
-            - "itinerary": activities, sightseeing, experiences (20% budget allocation)
-            - "restaurant": food, dining, meals (25% budget allocation)  
-            - "travel": transport, flights, trains, buses (25% budget allocation)
+            - "accommodation": hotels, stays, lodging (35% budget allocation)
+            - "itinerary": activities, sightseeing, experiences (30% budget allocation)
+            - "travel": transport, flights, trains, buses (35% budget allocation)
+            - "restaurant": food, dining (optional - only if user explicitly requests, available via API)
 
             EXAMPLES:
 
             Query: "Plan trip from Bangalore to Coorg for 3 persons from 25-12-2025 to 30-12-2025 with budget rupees 25000"
-            Output: {{"budget": 25000, "currency": "INR", "dates": "25-12-2025 to 30-12-2025", "from_location": "Bangalore", "to_location": "Coorg", "travelers": 3, "routing_order": ["itinerary", "accommodation", "travel", "restaurant"]}}
+            Output: {{"budget": 25000, "currency": "INR", "dates": "25-12-2025 to 30-12-2025", "from_location": "Bangalore", "to_location": "Coorg", "travelers": 3, "dietary_preferences": "veg and non-veg", "routing_order": ["itinerary", "accommodation", "travel"]}}
 
-            Query: "Luxury food tour in Mumbai for couple, budget ₹80000, good hotels and fine dining"
-            Output: {{"budget": 80000, "currency": "INR", "dates": "Not specified", "from_location": "Not specified", "to_location": "Mumbai", "travelers": 2, "routing_order": ["restaurant", "accommodation", "itinerary", "travel"]}}
+            Query: "Luxury food tour in Mumbai for couple, budget ₹80000, good hotels and fine dining, we are vegetarian"
+            Output: {{"budget": 80000, "currency": "INR", "dates": "Not specified", "from_location": "Not specified", "to_location": "Mumbai", "travelers": 2, "dietary_preferences": "veg only", "routing_order": ["restaurant", "accommodation", "itinerary", "travel"]}}
 
-            Query: "Budget trip from Delhi to Manali for 5 people, ₹15000 total, prefer buses"
-            Output: {{"budget": 15000, "currency": "INR", "dates": "Not specified", "from_location": "Delhi", "to_location": "Manali", "travelers": 5, "routing_order": ["travel", "itinerary", "accommodation", "restaurant"]}}
+            Query: "Budget trip from Delhi to Manali for 5 people, ₹15000 total, prefer buses, non-veg food preferred"
+            Output: {{"budget": 15000, "currency": "INR", "dates": "Not specified", "from_location": "Delhi", "to_location": "Manali", "travelers": 5, "dietary_preferences": "non-veg only", "routing_order": ["travel", "itinerary", "accommodation"]}}
 
             Query: "Family vacation to Goa, comfortable stay, 4 persons"
-            Output: {{"budget": null, "currency": "INR", "dates": "Not specified", "from_location": "Not specified", "to_location": "Goa", "travelers": 4, "routing_order": ["accommodation", "itinerary", "travel", "restaurant"]}}
+            Output: {{"budget": null, "currency": "INR", "dates": "Not specified", "from_location": "Not specified", "to_location": "Goa", "travelers": 4, "dietary_preferences": "veg and non-veg", "routing_order": ["accommodation", "itinerary", "travel"]}}
 
             Return ONLY valid JSON:
             """
@@ -295,7 +743,8 @@ class TripOptimizationAgent:
                     'from_location': preferences.get('from_location', 'Not specified'),
                     'to_location': preferences.get('to_location', 'Not specified'),
                     'travelers': preferences.get('travelers', 1),
-                    'routing_order': preferences.get('routing_order', ["itinerary", "travel", "accommodation", "restaurant"])
+                    'dietary_preferences': preferences.get('dietary_preferences', 'veg and non-veg'),
+                    'routing_order': preferences.get('routing_order', ["itinerary", "travel", "accommodation"])
                 }
                 
                 self.logger.info(f"Extracted: {validated_preferences}")
@@ -325,7 +774,8 @@ class TripOptimizationAgent:
             'from_location': 'Not specified',
             'to_location': 'Not specified',
             'travelers': 1,
-            'routing_order': ["itinerary", "accommodation", "travel", "restaurant"]
+            'dietary_preferences': 'veg and non-veg',
+            'routing_order': ["itinerary", "accommodation", "travel"]
         }
         
         # Simple Indian location detection
@@ -417,36 +867,34 @@ class TripOptimizationAgent:
             QUERY: "{query}"
             BUDGET: {budget if budget else "Not specified"}
 
-            Understand the user's priorities and intent from the query context, then allocate budget percentages across these 4 categories:
+            Understand the user's priorities and intent from the query context, then allocate budget percentages across these 3 categories:
 
             1. **accommodation** (hotels, stays, lodging)
             2. **itinerary** (activities, sightseeing, experiences) 
             3. **travel** (transport, flights, trains, buses)
-            4. **restaurant** (food, dining, meals)
 
             ALLOCATION GUIDELINES:
             - Total must equal 100% (1.0)
-            - Minimum 10% (0.10) for restaurant (realistic food budget)
-            - Minimum 5% (0.05) for other categories  
-            - Maximum 50% (0.50) per category
+            - Minimum 10% (0.10) per category  
+            - Maximum 60% (0.60) per category
             - Consider user emphasis, budget level, and trip type
-            - **RESTAURANT BUDGET REALITY CHECK**: Ensure restaurant allocation provides at least ₹500-800 per person per day for meals
+            - Balance between comfort (accommodation), experiences (itinerary), and connectivity (travel)
 
             CONTEXT UNDERSTANDING:
-            - Luxury emphasis → higher accommodation %
-            - Food/culinary focus → higher restaurant % (30-40%)
-            - Adventure/sightseeing → higher itinerary %
-            - Long distance/transport concerns → higher travel %
-            - Budget conscious → optimize for value, but maintain realistic food budget (min 20%)
-            - Family trips → balanced allocation with accommodation focus, adequate food budget
-            - Business trips → accommodation and travel focus, professional dining budget
+            - Luxury emphasis → higher accommodation % (40-50%)
+            - Adventure/sightseeing focus → higher itinerary % (35-45%)
+            - Long distance/transport concerns → higher travel % (40-50%)
+            - Budget conscious → balanced allocation optimizing value
+            - Family trips → balanced allocation with accommodation focus (40%)
+            - Business trips → accommodation and travel focus (40% each)
 
             REALISTIC EXAMPLES:
-            - Budget ₹25,000 for 2 people, 3 days → restaurant should get 25-30% (₹6,250-7,500)
-            - Budget ₹50,000 for family → restaurant should get 20-25% (₹10,000-12,500)
+            - Budget ₹25,000 for 2 people, 3 days → accommodation: 35%, itinerary: 30%, travel: 35%
+            - Budget ₹50,000 for family → accommodation: 40%, itinerary: 25%, travel: 35%
+            - Long-distance trip → accommodation: 30%, itinerary: 25%, travel: 45%
 
             Return ONLY JSON with decimal percentages:
-            {{"accommodation": 0.30, "itinerary": 0.20, "travel": 0.25, "restaurant": 0.25}}
+            {{"accommodation": 0.35, "itinerary": 0.30, "travel": 0.35}}
             """
             
             # Use Gemini for intelligent allocation
@@ -472,18 +920,12 @@ class TripOptimizationAgent:
                 # Normalize to 100%
                 allocation = {k: v/total for k, v in allocation.items()}
             
-            # Ensure minimums - restaurant needs higher minimum for realistic meals
+            # Ensure minimums for 3 tools
             for tool in ['accommodation', 'itinerary', 'travel']:
                 if tool not in allocation:
-                    allocation[tool] = 0.05
-                elif allocation[tool] < 0.05:
-                    allocation[tool] = 0.05
-            
-            # Restaurant needs higher minimum for realistic meal costs
-            if 'restaurant' not in allocation:
-                allocation['restaurant'] = 0.10
-            elif allocation['restaurant'] < 0.10:
-                allocation['restaurant'] = 0.10
+                    allocation[tool] = 0.10
+                elif allocation[tool] < 0.10:
+                    allocation[tool] = 0.10
             
             # Re-normalize after minimum adjustments
             total = sum(allocation.values())
@@ -494,12 +936,11 @@ class TripOptimizationAgent:
             
         except Exception as e:
             self.logger.warning(f"⚠️ Gemini allocation failed: {e}, using default")
-            # Fallback to balanced default with realistic restaurant allocation
+            # Fallback to balanced default with 3 tools
             return {
-                'accommodation': 0.30,
-                'itinerary': 0.20, 
-                'travel': 0.25,
-                'restaurant': 0.25
+                'accommodation': 0.35,
+                'itinerary': 0.30, 
+                'travel': 0.35
             }
     
     def _reallocate_remaining_budget(self, state: Dict[str, Any], completed_tools: List[str]) -> Dict[str, float]:
@@ -676,8 +1117,37 @@ class TripOptimizationAgent:
             
             # Execute tool
             if current_tool == "accommodation":
-                self.logger.info("Invoking accommodation search tool...")
-                tool_params = {"query": budget_aware_query}
+                self.logger.info("Invoking accommodation search tool with extracted parameters...")
+                
+                # Extract parameters from state
+                location = state.get("to_location", "Not specified")
+                dates_str = state.get("dates", "")
+                travelers = state.get("travelers", 2)
+                currency = state.get("currency", "INR")
+                
+                # Parse dates to get check-in and check-out
+                check_in_date = None
+                check_out_date = None
+                try:
+                    if " to " in dates_str:
+                        start_date_str, end_date_str = dates_str.split(" to ")
+                        start_date = datetime.strptime(start_date_str.strip(), "%d-%m-%Y")
+                        end_date = datetime.strptime(end_date_str.strip(), "%d-%m-%Y")
+                        check_in_date = start_date.strftime("%Y-%m-%d")
+                        check_out_date = end_date.strftime("%Y-%m-%d")
+                except Exception as e:
+                    self.logger.warning(f"Could not parse dates: {e}")
+                
+                # Prepare tool parameters
+                tool_params = {
+                    "query": budget_aware_query,
+                    "location": location,
+                    "check_in_date": check_in_date,
+                    "check_out_date": check_out_date,
+                    "adults": travelers,
+                    "children": 0,
+                    "currency": currency
+                }
                 self.logger.info(f"Tool Parameters: {tool_params}")
                 result = self.tools["accommodation"].invoke(tool_params)
             elif current_tool == "itinerary":
@@ -686,51 +1156,50 @@ class TripOptimizationAgent:
                 self.logger.info(f"Tool Parameters: {tool_params}")
                 result = self.tools["itinerary"].invoke(tool_params)
             elif current_tool == "restaurant":
-                # Restaurant tool needs special handling - use itinerary result if available
+                # Restaurant tool now works independently with location parameter
+                self.logger.info("Invoking restaurant search tool...")
+                
+                # Extract parameters
+                travelers = state.get("travelers", 2)
+                dates_str = state.get("dates", "")
+                location = state.get("to_location", "Not specified")
+                currency = state.get("currency", "USD")
+                
+                # Calculate days from dates
+                try:
+                    if " to " in dates_str:
+                        start_date_str, end_date_str = dates_str.split(" to ")
+                        start_date = datetime.strptime(start_date_str.strip(), "%d-%m-%Y")
+                        end_date = datetime.strptime(end_date_str.strip(), "%d-%m-%Y")
+                        num_days = (end_date - start_date).days + 1
+                    else:
+                        num_days = 3  # Default fallback
+                except:
+                    num_days = 3  # Fallback on parsing error
+                
+                # Create budget hint for restaurant recommendations
+                budget_hint = f"{currency}{allocated_budget:.0f} for {travelers} person{'s' if travelers > 1 else ''} for {num_days} days"
+                
+                # Check if itinerary is available for context (optional)
                 itinerary_result = state.get("itinerary_result", "")
-                if itinerary_result:
-                    self.logger.info("Invoking restaurant search tool with itinerary context...")
-                    
-                    # Extract travelers and dates for budget calculation
-                    travelers = state.get("travelers", 2)
-                    dates_str = state.get("dates", "")
-                    
-                    # Calculate days from dates
-                    try:
-                        if " to " in dates_str:
-                            start_date_str, end_date_str = dates_str.split(" to ")
-                            start_date = datetime.strptime(start_date_str.strip(), "%d-%m-%Y")
-                            end_date = datetime.strptime(end_date_str.strip(), "%d-%m-%Y")
-                            num_days = (end_date - start_date).days + 1
-                        else:
-                            num_days = 3  # Default fallback
-                    except:
-                        num_days = 3  # Fallback on parsing error
-                    
-                    # Create budget hint for restaurant recommendations
-                    budget_hint = f"{currency}{allocated_budget:.0f} for {travelers} person{'s' if travelers > 1 else ''} for {num_days} days"
-                    
-                    tool_params = {
-                        "itinerary_details": itinerary_result[:200] + "...(truncated)",
-                        "dates": state["dates"],
-                        "dietary_preferences": "veg and non-veg",
-                        "budget_hint": budget_hint
-                    }
-                    self.logger.info(f"Tool Parameters: {tool_params}")
-                    result = self.tools["restaurant"].invoke({
-                        "itinerary_details": itinerary_result,
-                        "dates": state["dates"],
-                        "dietary_preferences": "veg and non-veg",  # Default
-                        "budget_hint": budget_hint
-                    })
-                else:
-                    self.logger.info("No itinerary available for restaurant planning")
-                    result = f"No itinerary available for restaurant planning. Budget: {currency}{allocated_budget:.0f}"
-            elif current_tool == "travel":
-                self.logger.info("Invoking hybrid travel optimization tool...")
-                tool_params = {"query": budget_aware_query}
+                
+                # Extract dietary preferences from user preferences or itinerary
+                dietary_preferences = state.get("user_preferences", {}).get("dietary_preferences", "veg and non-veg")
+                
+                tool_params = {
+                    "location": location,
+                    "dates": dates_str,
+                    "dietary_preferences": dietary_preferences,
+                    "budget_hint": budget_hint,
+                    "travelers": travelers,
+                    "itinerary_details": itinerary_result if itinerary_result else ""
+                }
                 self.logger.info(f"Tool Parameters: {tool_params}")
-                result = self.tools["travel"].invoke(tool_params)
+                result = self.tools["restaurant"].invoke(tool_params)
+            elif current_tool == "travel":
+                self.logger.info("Invoking new travel search with clean architecture...")
+                # Use the new clean architecture approach
+                result = self.execute_travel_search(budget_aware_query)
             else:
                 self.logger.error(f"Unknown tool: {current_tool}")
                 result = f"Unknown tool: {current_tool}"

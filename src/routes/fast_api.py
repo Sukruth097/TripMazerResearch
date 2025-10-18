@@ -47,8 +47,8 @@ from tools.optimization import (
     search_restaurants
 )
 
-# Import the hybrid travel optimization (replaces old optimize_travel)
-from tools.optimization.TravelOptimization import hybrid_travel_optimization
+# Import the  travel optimization (replaces old optimize_travel)
+from tools.optimization.TravelOptimization import travel_search_tool
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -302,7 +302,7 @@ async def optimize_travel_tool(request: dict):
     try:
         @measure_execution_time
         def execute_travel_optimization():
-            return hybrid_travel_optimization.invoke({"query": request.get('query', '')})
+            return travel_search_tool.invoke({"query": request.get('query', '')})
         
         result, execution_time = execute_travel_optimization()
         
@@ -323,7 +323,7 @@ async def optimize_travel_tool(request: dict):
 @app.post("/tools/travel_hybrid")
 async def optimize_travel_hybrid(request: dict):
     """
-    Hybrid travel optimization using SerpAPI for flights and Perplexity for other transport.
+    Travel optimization using SerpAPI for flights and Perplexity for other transport.
     
     This endpoint uses intelligent routing to:
     - Extract flight parameters using Gemini AI
@@ -332,12 +332,12 @@ async def optimize_travel_hybrid(request: dict):
     - Use Perplexity for comprehensive bus/train options
     - Combine results for optimal travel recommendations
     """
-    logger.info(f"Hybrid travel optimization requested: {request.get('query', '')[:100]}...")
+    logger.info(f"Travel optimization requested: {request.get('query', '')[:100]}...")
     
     try:
         @measure_execution_time
         def execute_hybrid_travel():
-            return hybrid_travel_optimization.invoke({"query": request.get('query', '')})
+            return travel_search_tool.invoke({"query": request.get('query', '')})
         
         result, execution_time = execute_hybrid_travel()
         

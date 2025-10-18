@@ -1,41 +1,96 @@
 import os
 import json
+import sys
 from typing import Dict, Any, List
 from dotenv import load_dotenv
 
 load_dotenv()
 
-from src.services.perplexity_service import PerplexityService
-from src.services.serp_api_service import SerpAPIService
+# Add project root to path for standalone execution
+if __name__ == "__main__":
+    project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..'))
+    if project_root not in sys.path:
+        sys.path.insert(0, project_root)
+
 from src.entity.travel_search_params import TravelSearchParams
+from src.utils.service_initializer import get_perplexity_service, get_serp_api_service
 from langchain.tools import tool
 
 
-def _get_perplexity_service() -> PerplexityService:
-    """Get initialized Perplexity service instance."""
-    api_key = os.getenv('PERPLEXITY_API_KEY')
-    if not api_key:
-        raise ValueError("PERPLEXITY_API_KEY environment variable is required")
-    return PerplexityService(api_key)
-
-
-def _get_serp_api_service() -> SerpAPIService:
-    """Get initialized SerpAPI service instance."""
-    api_key = os.getenv('SERP_API_KEY')
-    if not api_key:
-        raise ValueError("SERP_API_KEY environment variable is required")
-    return SerpAPIService(api_key)
+def _extract_flight_details(flight_data: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Extract clean, structured flight details for easy table formatting.
+    
+    Returns:
+        Dict with: airline, departure_time, arrival_time, duration_minutes, price, carbon_grams
+    """
+    try:
+        main_flight = flight_data.get('flights', [{}])[0]
+        
+        # Extract airline names from all flight segments
+        airline_names = ', '.join([
+            f.get('airline', 'Unknown') 
+            for f in flight_data.get('flights', [])
+        ])
+        
+        # Extract departure time (multiple fallback options)
+        departure_time = (
+            main_flight.get('departure_airport', {}).get('time')
+            or main_flight.get('departure_time')
+            or main_flight.get('departure_time_utc')
+            or "N/A"
+        )
+        
+        # Extract arrival time (multiple fallback options)
+        arrival_time = (
+            main_flight.get('arrival_airport', {}).get('time')
+            or main_flight.get('arrival_time')
+            or main_flight.get('arrival_time_utc')
+            or "N/A"
+        )
+        
+        # Extract duration in minutes
+        duration_minutes = (
+            main_flight.get('duration')
+            or flight_data.get('total_duration')
+            or 0
+        )
+        
+        # Extract price (per person)
+        price = flight_data.get('price', 0)
+        
+        # Extract carbon emissions in grams
+        carbon_grams = flight_data.get('carbon_emissions', {}).get('this_flight', 0)
+        
+        return {
+            'airline': airline_names,
+            'departure_time': departure_time,
+            'arrival_time': arrival_time,
+            'duration_minutes': duration_minutes,
+            'price_per_person': price,
+            'carbon_grams': carbon_grams
+        }
+    except Exception as e:
+        return {
+            'airline': 'Unknown',
+            'departure_time': 'N/A',
+            'arrival_time': 'N/A',
+            'duration_minutes': 0,
+            'price_per_person': 0,
+            'carbon_grams': 0,
+            'parse_error': str(e)
+        }
 
 
 def _search_flights_with_serp(params: TravelSearchParams) -> Dict[str, Any]:
     """
     Search flights using SERP API for both outbound and return journeys.
-    Returns raw data for agent processing.
+    Returns structured, table-ready flight data for easy agent formatting.
     """
     try:
-        serp_service = _get_serp_api_service()
+        serp_service = get_serp_api_service()
         
-        # Use airport codes resolved by agent (fallback to city names if not available)
+        # Use airport codes from params (agent should provide these)
         origin_airport = params.origin_airport or params.origin
         dest_airport = params.destination_airport or params.destination
         
@@ -43,10 +98,15 @@ def _search_flights_with_serp(params: TravelSearchParams) -> Dict[str, Any]:
             'provider': 'serp_api',
             'transport_mode': 'flight',
             'success': True,
-            'outbound': None,
-            'return': None,
+            'outbound_flights': [],
+            'return_flights': [],
             'error': None,
-            'airport_codes_used': {'origin': origin_airport, 'destination': dest_airport}
+            'route_info': {
+                'origin': params.origin,
+                'destination': params.destination,
+                'origin_airport': origin_airport,
+                'destination_airport': dest_airport
+            }
         }
         
         # Search outbound flights
@@ -59,7 +119,12 @@ def _search_flights_with_serp(params: TravelSearchParams) -> Dict[str, Any]:
             currency=params.currency,
             adults=params.travelers
         )
-        results['outbound'] = outbound_results
+        
+        # Extract structured outbound flight details (top 5 options)
+        if isinstance(outbound_results, dict) and 'best_flights' in outbound_results:
+            for flight in outbound_results['best_flights'][:5]:
+                flight_details = _extract_flight_details(flight)
+                results['outbound_flights'].append(flight_details)
         
         # Search return flights if needed
         if params.trip_type == "round_trip" and params.return_date:
@@ -72,7 +137,12 @@ def _search_flights_with_serp(params: TravelSearchParams) -> Dict[str, Any]:
                 currency=params.currency,
                 adults=params.travelers
             )
-            results['return'] = return_results
+            
+            # Extract structured return flight details (top 5 options)
+            if isinstance(return_results, dict) and 'best_flights' in return_results:
+                for flight in return_results['best_flights'][:5]:
+                    flight_details = _extract_flight_details(flight)
+                    results['return_flights'].append(flight_details)
         
         return results
         
@@ -82,64 +152,200 @@ def _search_flights_with_serp(params: TravelSearchParams) -> Dict[str, Any]:
             'transport_mode': 'flight', 
             'success': False,
             'error': str(e),
-            'outbound': None,
-            'return': None
+            'outbound_flights': [],
+            'return_flights': []
         }
+
+
+def _extract_ground_transport_details_with_ai(raw_text: str, transport_type: str, travelers: int, currency: str) -> List[Dict[str, Any]]:
+    """
+    Extract structured ground transport details from Perplexity raw text using Gemini.
+    
+    Returns:
+        List of dicts with: operator, service_type, departure_time, arrival_time, duration_minutes, price_per_person, platform
+    """
+    try:
+        from src.utils.service_initializer import get_gemini_client
+        client = get_gemini_client()
+        
+        extraction_prompt = f"""
+        TASK: Extract {transport_type} information from the text into structured JSON array.
+        
+        RAW TEXT:
+        {raw_text[:3000]}
+        
+        Extract each {transport_type} option into this exact format:
+        [
+          {{
+            "operator": "Train Name/Number OR Bus Operator Name",
+            "service_type": "Class (1A/2A/3A/Sleeper) OR Bus Type (AC/Non-AC/Sleeper/Volvo)",
+            "departure_time": "HH:MM (24-hour format)",
+            "arrival_time": "HH:MM (24-hour format)",
+            "duration_minutes": 920,
+            "price_per_person": 2500.0,
+            "platform": "IRCTC/RedBus/etc"
+          }}
+        ]
+        
+        RULES:
+        - Extract 5-8 best options
+        - Convert duration to total minutes (e.g., "15h 20m" → 920)
+        - Use mid-range class pricing for trains (2A or 3A)
+        - For buses, use typical AC sleeper pricing
+        - Times in 24-hour format (e.g., "17:00", "08:30")
+        - If price range given, use middle value
+        - Currency: {currency}
+        
+        Return ONLY the JSON array, no other text.
+        """
+        
+        response = client.models.generate_content(
+            model="gemini-2.0-flash-exp",
+            contents=extraction_prompt
+        )
+        
+        response_text = response.text.strip()
+        
+        # Clean JSON response
+        if response_text.startswith('```json'):
+            response_text = response_text.replace('```json', '').replace('```', '').strip()
+        elif response_text.startswith('```'):
+            response_text = response_text.replace('```', '').strip()
+        
+        # Parse JSON
+        extracted_data = json.loads(response_text)
+        
+        return extracted_data if isinstance(extracted_data, list) else []
+        
+    except Exception as e:
+        print(f"⚠️ AI extraction failed for {transport_type}: {e}")
+        return []
 
 
 def _search_ground_transport_with_perplexity(params: TravelSearchParams, modes: List[str]) -> Dict[str, Any]:
     """
-    Search buses and trains using Perplexity for both directions.
-    Returns raw data for agent processing.
+    Search buses and trains using Perplexity, then extract structured data.
+    Returns table-ready format like flights.
     """
     try:
-        perplexity_service = _get_perplexity_service()
+        perplexity_service = get_perplexity_service()
         
-        # Create search query for Perplexity
-        transport_types = " and ".join(modes)
-        query = f"""
-        Find {transport_types} options from {params.origin} to {params.destination} 
-        on {params.departure_date} for {params.travelers} travelers.
-        Budget: {params.currency} {params.budget_limit if params.budget_limit else 'flexible'}.
-        
-        {"Also find return options from " + params.destination + " to " + params.origin + " on " + params.return_date + "." if params.trip_type == "round_trip" and params.return_date else ""}
-        
-        Provide specific operator names, departure times, journey duration, and pricing.
-        Focus on actual available services for this route and date.
-        """
-        
-        # System prompt to ensure structured data
-        system_prompt = f"""
-        You are a travel search assistant. Provide {transport_types} information with:
-        
-        1. Specific operator names and service details
-        2. Departure and arrival times  
-        3. Journey duration
-        4. Pricing in {params.currency}
-        5. Booking platforms
-        
-        For Indian domestic routes, focus on:
-        - Buses: Government and private operators (KSRTC, MSRTC, VRL, SRS, etc.)
-        - Trains: Indian Railways with train names, numbers, and class options
-        
-        Provide realistic, current information without table formatting.
-        Return as structured text that an agent can format appropriately.
-        """
-        
-        results = perplexity_service.search(
-            query=query,
-            system_prompt=system_prompt,
-            temperature=0.1
-        )
-        
-        return {
+        results = {
             'provider': 'perplexity',
             'transport_modes': modes,
             'success': True,
-            'raw_results': results,
+            'outbound_trains': [],
+            'return_trains': [],
+            'outbound_buses': [],
+            'return_buses': [],
             'error': None,
-            'search_query': query
+            'route_info': {
+                'origin': params.origin,
+                'destination': params.destination
+            }
         }
+        
+        # Search trains if requested
+        if 'train' in modes:
+            train_query = f"""
+            Find train options from {params.origin} to {params.destination} 
+            on {params.departure_date} for {params.travelers} travelers.
+            Budget: {params.currency} {params.budget_limit if params.budget_limit else 'flexible'}.
+            
+            {"Also find return train options from " + params.destination + " to " + params.origin + " on " + params.return_date + "." if params.trip_type == "round_trip" and params.return_date else ""}
+            
+            Provide 5-8 best train options with:
+            - Train name and number
+            - Departure and arrival times (with stations)
+            - Journey duration
+            - Available classes with prices (1A, 2A, 3A, Sleeper)
+            - Booking platforms
+            
+            Be specific with actual train numbers and realistic pricing.
+            """
+            
+            train_system_prompt = """
+            You are a train search assistant for Indian Railways. Provide detailed train information:
+            
+            1. Train name and number (e.g., "Rajdhani Express 12951")
+            2. Departure station and time (e.g., "Mumbai Central - 17:00")
+            3. Arrival station and time (e.g., "New Delhi - 08:35 next day")
+            4. Journey duration (e.g., "15h 35m")
+            5. Class-wise pricing: 1A, 2A, 3A, Sleeper
+            6. Booking platforms
+            
+            List actual trains with real train numbers. Be specific and detailed.
+            """
+            
+            train_raw = perplexity_service.search(
+                query=train_query,
+                system_prompt=train_system_prompt,
+                temperature=0.1
+            )
+            
+            # Extract structured data from raw text
+            trains_structured = _extract_ground_transport_details_with_ai(
+                train_raw, 'train', params.travelers, params.currency
+            )
+            
+            # Split into outbound and return based on count
+            if trains_structured:
+                mid_point = len(trains_structured) // 2
+                results['outbound_trains'] = trains_structured[:mid_point] if params.trip_type == "round_trip" else trains_structured
+                results['return_trains'] = trains_structured[mid_point:] if params.trip_type == "round_trip" and mid_point > 0 else []
+        
+        # Search buses if requested
+        if 'bus' in modes:
+            bus_query = f"""
+            Find bus options from {params.origin} to {params.destination} 
+            on {params.departure_date} for {params.travelers} travelers.
+            Budget: {params.currency} {params.budget_limit if params.budget_limit else 'flexible'}.
+            
+            {"Also find return bus options from " + params.destination + " to " + params.origin + " on " + params.return_date + "." if params.trip_type == "round_trip" and params.return_date else ""}
+            
+            Provide 5-8 best bus options with:
+            - Operator names (KSRTC, MSRTC, VRL, SRS, RedBus partners)
+            - Bus types (AC Sleeper, Non-AC Sleeper, Volvo, Semi-Sleeper)
+            - Departure and arrival times
+            - Journey duration
+            - Pricing per seat
+            - Booking platforms
+            
+            For long routes, include overnight sleeper buses. Be specific with actual operators.
+            """
+            
+            bus_system_prompt = """
+            You are a bus travel search assistant for India. Provide detailed bus information:
+            
+            1. Operator name (e.g., "VRL Travels", "MSRTC", "SRS Travels")
+            2. Bus type (e.g., "AC Sleeper", "Volvo Multi-axle", "Non-AC Seater")
+            3. Departure time and point (e.g., "20:00 from Dadar")
+            4. Arrival time and point (e.g., "08:00 at Kashmere Gate")
+            5. Journey duration (e.g., "24h 30m")
+            6. Price per seat
+            7. Booking platform (RedBus, AbhiBus, etc.)
+            
+            List actual operators with realistic pricing. Be specific and detailed.
+            """
+            
+            bus_raw = perplexity_service.search(
+                query=bus_query,
+                system_prompt=bus_system_prompt,
+                temperature=0.1
+            )
+            
+            # Extract structured data from raw text
+            buses_structured = _extract_ground_transport_details_with_ai(
+                bus_raw, 'bus', params.travelers, params.currency
+            )
+            
+            # Split into outbound and return
+            if buses_structured:
+                mid_point = len(buses_structured) // 2
+                results['outbound_buses'] = buses_structured[:mid_point] if params.trip_type == "round_trip" else buses_structured
+                results['return_buses'] = buses_structured[mid_point:] if params.trip_type == "round_trip" and mid_point > 0 else []
+        
+        return results
         
     except Exception as e:
         return {
@@ -147,7 +353,10 @@ def _search_ground_transport_with_perplexity(params: TravelSearchParams, modes: 
             'transport_modes': modes,
             'success': False,
             'error': str(e),
-            'raw_results': None
+            'outbound_trains': [],
+            'return_trains': [],
+            'outbound_buses': [],
+            'return_buses': []
         }
 
 
@@ -263,29 +472,173 @@ def travel_search_tool(origin: str, destination: str, departure_date: str,
         raise Exception(f"Travel search failed: {str(e)}")
 
 
-
-
-
 # For testing
 if __name__ == "__main__":
     print("Testing Unified Travel Search Tool...")
     
-    # Test with direct parameters
     try:
-        test_result = travel_search_tool(
-            origin="Mumbai",
-            destination="Delhi",
-            departure_date="2024-12-01",
-            transport_modes=["flight", "train"],
-            travelers=2,
-            return_date="2024-12-05",
-            budget_limit=15000,
-            currency="INR",
-            is_domestic=True
-        )
+        test_result = travel_search_tool.invoke({
+            "origin": "Mumbai",
+            "destination": "Delhi",
+            "origin_airport": "BOM",
+            "destination_airport": "DEL",
+            "departure_date": "2025-12-01",
+            "transport_modes": ["flight", "train", "bus"],
+            "travelers": 2,
+            "return_date": "2025-12-05",
+            "budget_limit": 35000,
+            "currency": "INR",
+            "is_domestic": True
+        })
         
         print("✅ Test successful!")
-        print("Results:", test_result[:500], "...")
+        print("\n" + "="*80)
+        print("SEARCH RESULTS (Structured Format)")
+        print("="*80)
         
+        results = json.loads(test_result)
+
+        # ------------------ FLIGHT RESULTS ------------------
+        if 'flights' in results.get('results', {}):
+            flights = results['results']['flights']
+            print("\n🛫 FLIGHT OPTIONS:")
+            print("-"*80)
+            
+            if flights.get('success'):
+                route_info = flights.get('route_info', {})
+                departure_date = results.get('search_params', {}).get('departure_date', '')
+                return_date = results.get('search_params', {}).get('return_date', '')
+                
+                # Outbound flights (now pre-structured)
+                if flights.get('outbound_flights'):
+                    print(f"\n📤 Outbound Journey: {route_info.get('origin')} → {route_info.get('destination')} ({departure_date})")
+                    print(f"{'#':<4} {'Airline':<20} {'Departure':<12} {'Arrival':<12} {'Duration':<10} {'Price':<12}")
+                    print("-"*80)
+                    
+                    for idx, flight in enumerate(flights['outbound_flights'], 1):
+                        airline = flight.get('airline', 'Unknown')[:19]
+                        departure = flight.get('departure_time', 'N/A')
+                        arrival = flight.get('arrival_time', 'N/A')
+                        duration_min = flight.get('duration_minutes', 0)
+                        duration = f"{duration_min//60}h {duration_min%60}m" if duration_min else "N/A"
+                        price = flight.get('price_per_person', 0)
+                        
+                        print(f"{idx:<4} {airline:<20} {departure:<12} {arrival:<12} {duration:<10} ₹{price:>9,.0f}")
+                
+                # Return flights (now pre-structured)
+                if flights.get('return_flights'):
+                    print(f"\n📥 Return Journey: {route_info.get('destination')} → {route_info.get('origin')} ({return_date})")
+                    print(f"{'#':<4} {'Airline':<20} {'Departure':<12} {'Arrival':<12} {'Duration':<10} {'Price':<12}")
+                    print("-"*80)
+                    
+                    for idx, flight in enumerate(flights['return_flights'], 1):
+                        airline = flight.get('airline', 'Unknown')[:19]
+                        departure = flight.get('departure_time', 'N/A')
+                        arrival = flight.get('arrival_time', 'N/A')
+                        duration_min = flight.get('duration_minutes', 0)
+                        duration = f"{duration_min//60}h {duration_min%60}m" if duration_min else "N/A"
+                        price = flight.get('price_per_person', 0)
+                        
+                        print(f"{idx:<4} {airline:<20} {departure:<12} {arrival:<12} {duration:<10} ₹{price:>9,.0f}")
+            else:
+                print(f"    ❌ Flight search failed: {flights.get('error')}")
+
+        # ------------------ GROUND TRANSPORT RESULTS ------------------
+        if 'ground_transport' in results.get('results', {}):
+            ground = results['results']['ground_transport']
+            
+            if ground.get('success'):
+                route_info = ground.get('route_info', {})
+                departure_date = results.get('search_params', {}).get('departure_date', '')
+                return_date = results.get('search_params', {}).get('return_date', '')
+                
+                # Train results (outbound)
+                if ground.get('outbound_trains'):
+                    print(f"\n\n🚆 TRAIN OPTIONS:")
+                    print("-"*80)
+                    print(f"\n📤 Outbound Journey: {route_info.get('origin')} → {route_info.get('destination')} ({departure_date})")
+                    print(f"{'#':<4} {'Train/Class':<25} {'Departure':<12} {'Arrival':<12} {'Duration':<10} {'Price':<12} {'Platform':<15}")
+                    print("-"*80)
+                    
+                    for idx, train in enumerate(ground['outbound_trains'], 1):
+                        operator = train.get('operator', 'Unknown')[:24]
+                        service = train.get('service_type', 'N/A')
+                        full_name = f"{operator} ({service})" if service != 'N/A' else operator
+                        departure = train.get('departure_time', 'N/A')
+                        arrival = train.get('arrival_time', 'N/A')
+                        duration_min = train.get('duration_minutes', 0)
+                        duration = f"{duration_min//60}h {duration_min%60}m" if duration_min else "N/A"
+                        price = train.get('price_per_person', 0)
+                        platform = train.get('platform', 'N/A')[:14]
+                        
+                        print(f"{idx:<4} {full_name[:25]:<25} {departure:<12} {arrival:<12} {duration:<10} ₹{price:>9,.0f} {platform:<15}")
+                
+                # Train results (return)
+                if ground.get('return_trains'):
+                    print(f"\n📥 Return Journey: {route_info.get('destination')} → {route_info.get('origin')} ({return_date})")
+                    print(f"{'#':<4} {'Train/Class':<25} {'Departure':<12} {'Arrival':<12} {'Duration':<10} {'Price':<12} {'Platform':<15}")
+                    print("-"*80)
+                    
+                    for idx, train in enumerate(ground['return_trains'], 1):
+                        operator = train.get('operator', 'Unknown')[:24]
+                        service = train.get('service_type', 'N/A')
+                        full_name = f"{operator} ({service})" if service != 'N/A' else operator
+                        departure = train.get('departure_time', 'N/A')
+                        arrival = train.get('arrival_time', 'N/A')
+                        duration_min = train.get('duration_minutes', 0)
+                        duration = f"{duration_min//60}h {duration_min%60}m" if duration_min else "N/A"
+                        price = train.get('price_per_person', 0)
+                        platform = train.get('platform', 'N/A')[:14]
+                        
+                        print(f"{idx:<4} {full_name[:25]:<25} {departure:<12} {arrival:<12} {duration:<10} ₹{price:>9,.0f} {platform:<15}")
+                
+                # Bus results (outbound)
+                if ground.get('outbound_buses'):
+                    print(f"\n\n🚌 BUS OPTIONS:")
+                    print("-"*80)
+                    print(f"\n📤 Outbound Journey: {route_info.get('origin')} → {route_info.get('destination')} ({departure_date})")
+                    print(f"{'#':<4} {'Operator/Type':<25} {'Departure':<12} {'Arrival':<12} {'Duration':<10} {'Price':<12} {'Platform':<15}")
+                    print("-"*80)
+                    
+                    for idx, bus in enumerate(ground['outbound_buses'], 1):
+                        operator = bus.get('operator', 'Unknown')[:24]
+                        service = bus.get('service_type', 'N/A')
+                        full_name = f"{operator} ({service})" if service != 'N/A' else operator
+                        departure = bus.get('departure_time', 'N/A')
+                        arrival = bus.get('arrival_time', 'N/A')
+                        duration_min = bus.get('duration_minutes', 0)
+                        duration = f"{duration_min//60}h {duration_min%60}m" if duration_min else "N/A"
+                        price = bus.get('price_per_person', 0)
+                        platform = bus.get('platform', 'N/A')[:14]
+                        
+                        print(f"{idx:<4} {full_name[:25]:<25} {departure:<12} {arrival:<12} {duration:<10} ₹{price:>9,.0f} {platform:<15}")
+                
+                # Bus results (return)
+                if ground.get('return_buses'):
+                    print(f"\n📥 Return Journey: {route_info.get('destination')} → {route_info.get('origin')} ({return_date})")
+                    print(f"{'#':<4} {'Operator/Type':<25} {'Departure':<12} {'Arrival':<12} {'Duration':<10} {'Price':<12} {'Platform':<15}")
+                    print("-"*80)
+                    
+                    for idx, bus in enumerate(ground['return_buses'], 1):
+                        operator = bus.get('operator', 'Unknown')[:24]
+                        service = bus.get('service_type', 'N/A')
+                        full_name = f"{operator} ({service})" if service != 'N/A' else operator
+                        departure = bus.get('departure_time', 'N/A')
+                        arrival = bus.get('arrival_time', 'N/A')
+                        duration_min = bus.get('duration_minutes', 0)
+                        duration = f"{duration_min//60}h {duration_min%60}m" if duration_min else "N/A"
+                        price = bus.get('price_per_person', 0)
+                        platform = bus.get('platform', 'N/A')[:14]
+                        
+                        print(f"{idx:<4} {full_name[:25]:<25} {departure:<12} {arrival:<12} {duration:<10} ₹{price:>9,.0f} {platform:<15}")
+            else:
+                print(f"\n\n    ❌ Ground transport search failed: {ground.get('error')}")
+        
+        print("\n" + "="*80)
+        print(f"Search completed using: {', '.join(results.get('summary', {}).get('providers_used', []))}")
+        print("="*80)
+    
     except Exception as e:
         print(f"❌ Test failed: {e}")
+        import traceback
+        traceback.print_exc()
