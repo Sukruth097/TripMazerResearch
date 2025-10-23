@@ -1798,12 +1798,14 @@ Raw search results below:
     def _process_input(self, state: Dict[str, Any]) -> Dict[str, Any]:
         """Process input query and extract preferences."""
         query = state["original_query"]
+        # Initialize or update conversation history
+        if "history" not in state:
+            state["history"] = []
+        state["history"].append({"role": "user", "content": query})
+
         preferences = self._extract_preferences_and_routing(query)
-        
-        # Add original query to preferences for budget allocation
         preferences['original_query'] = query
-        
-        # Update state with extracted information
+
         budget = preferences.get('budget') or 30000  # Default budget if None or not found
         self.state_manager.update_input_info(
             query=query,
@@ -1815,10 +1817,8 @@ Raw search results below:
             to_loc=preferences.get('to_location', 'Not specified'),
             travelers=preferences.get('travelers', 1)
         )
-        
-        # Set tool sequence
+
         self.state_manager.set_tool_sequence(preferences.get('routing_order', self.default_sequence))
-        
         return self.state_manager.state
     
     def _generate_tool_specific_query(self, current_tool: str, state: Dict[str, Any], allocated_budget: float) -> str:
@@ -2189,9 +2189,14 @@ Suggest restaurants for various meal times and occasions."""
     
     def _format_output(self, state: Dict[str, Any]) -> Dict[str, Any]:
         """Format final output for presentation."""
+        # Optionally append agent response to history
+        response = self.state_manager.state.get("combined_result", "")
+        if "history" not in self.state_manager.state:
+            self.state_manager.state["history"] = []
+        self.state_manager.state["history"].append({"role": "agent", "content": response})
+
         execution_summary = self.state_manager.get_execution_summary()
         self.state_manager.state["execution_summary"] = json.dumps(execution_summary, indent=2)
-        
         return self.state_manager.state
     
     def plan_trip(self, query: str) -> Dict[str, Any]:
