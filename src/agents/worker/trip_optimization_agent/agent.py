@@ -148,7 +148,7 @@ class TripOptimizationAgent:
         
         endpoint = "https://tripmazer-aoai-dev-1.openai.azure.com/"
         deployment = "gpt-4.1-mini"
-        api_key = '69g0dOXr5ifw39ACNvaUyiPHFY8jkuynRWLEQnRohJAyikOdZTcwJQQJ99BJACHYHv6XJ3w3AAABACOGRQY2' #os.getenv("AZURE_OPENAI_API_KEY")
+        api_key = os.getenv("AZURE_OPENAI_API_KEY")
         
         if not api_key:
             raise ValueError("AZURE_OPENAI_API_KEY environment variable is required")
