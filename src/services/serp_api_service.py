@@ -211,8 +211,6 @@ class SerpAPIService:
             # Debug: Print what's being sent to SERP API
             print(f"\n🌐 DEBUG - SERP API Call:")
             print(f"   Query: '{query}'")
-            print(f"   Max Price: {max_price if max_price else 'None'}")
-            print(f"   Sort By: {sort_by}")
             
             # Build mandatory parameters with hardcoded defaults
             params = {

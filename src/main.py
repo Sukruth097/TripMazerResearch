@@ -1059,15 +1059,9 @@ You can also try using the individual planning sections above."""
 
 ---
 
-### 📊 **Planning Summary**
-{execution_summary if execution_summary else "Planning completed successfully with all tools executed."}
-
----
-
-💡 **Next Steps:**
+ **Next Steps:**
 - Review the itinerary and make any adjustments needed
 - Book accommodations and flights as recommended
-- Save restaurant recommendations for your trip
 - Check visa requirements if traveling internationally
 
 *This comprehensive plan was created using AI analysis of your preferences and real-time data.*"""

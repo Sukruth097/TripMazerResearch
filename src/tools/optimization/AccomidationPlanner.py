@@ -1,6 +1,7 @@
 import os
 import sys
 import json
+import random
 from typing import Dict, Any
 from dotenv import load_dotenv
 
@@ -99,12 +100,6 @@ def search_accommodations(location: str, check_in_date: str, check_out_date: str
         if rating is None:
             rating = [7, 8, 9]  # Default: Good ratings (7+)
         
-        # Debug: Print what query is being used
-        print(f"\n🔍 DEBUG - SERP Search Query: '{search_query}'")
-        print(f"📅 Check-in: {check_in_date}, Check-out: {check_out_date}")
-        print(f"👥 Adults: {adults}, Children: {children}")
-        print(f"💰 Currency: {currency}")
-        print(f"⭐ Rating Filter: {rating}")
         
         # Search hotels with SERP API (always use INR)
         hotel_results = serp_service.search_hotels(
@@ -129,13 +124,34 @@ def search_accommodations(location: str, check_in_date: str, check_out_date: str
         if 'properties' not in hotel_results or not hotel_results['properties']:
             return f"## Hotel Search Results\n\nNo hotels found for query: '{search_query}'"
         
-        # Get top 5 hotels
-        properties = hotel_results['properties'][:5]
+        # Get first 15 hotels, then use hybrid selection for better balance
+        all_properties = hotel_results['properties']
+        
+        # Take up to 15 properties (or all if less than 15)
+        available_properties = all_properties[:15] if len(all_properties) >= 15 else all_properties
+        
+        # Hybrid selection: First 3 top-ranked + Random 2 from remaining for variety
+        if len(available_properties) >= 5:
+            # Take first 3 results (most relevant/highest ranked)
+            top_3 = available_properties[:3]
+            
+            # Get random 2 from the remaining properties (positions 4-15)
+            remaining = available_properties[3:]
+            if len(remaining) >= 2:
+                random_2 = random.sample(remaining, 2)
+            else:
+                random_2 = remaining
+            
+            # Combine top 3 + random 2
+            properties = top_3 + random_2
+        else:
+            # If less than 5 properties available, use all
+            properties = available_properties
         
         # Build markdown table (always use INR symbol)
         currency_symbol = "₹"  # Always use INR
         
-        output = f"## 🏨 Top 5 Hotel Recommendations (via Google Hotels)\n\n"
+        output = f"## 🏨 Top 5 Hotel Recommendations\n\n"
         output += f"**Search Query:** {search_query}\n"
         output += f"**Dates:** {check_in_date} to {check_out_date} | **Guests:** {adults} adults"
         if children > 0:
@@ -143,8 +159,8 @@ def search_accommodations(location: str, check_in_date: str, check_out_date: str
         output += "\n\n"
         
         # Create table header
-        output += "| # | Hotel Name | Rating | Price/Night | Hotel Class | Key Amenities | Lat,Long | Nearby Places | Booking Link |\n"
-        output += "|---|------------|--------|-------------|-------------|---------------|----------|---------------|-------------|\n"
+        output += "| # | Hotel Name | Rating | Price/Night | Check-in Time | Check-out Time | Key Amenities | Nearby Places |\n"
+        output += "|---|------------|--------|-------------|---------------|----------------|---------------|---------------|\n"
         
         # Add hotel rows
         for i, hotel in enumerate(properties, 1):
@@ -156,16 +172,18 @@ def search_accommodations(location: str, check_in_date: str, check_out_date: str
             reviews = hotel.get('reviews', 0)
             
             # Get price
-            price_info = hotel.get('rate_per_night', {}).get('lowest', 'N/A')
+            price_info = hotel.get('rate_per_night', {})
+            # print(f"Price Info---------->: {price_info}")
             if isinstance(price_info, dict):
                 price = price_info.get('lowest', 'N/A')
             else:
                 price = 'N/A'
             
-            price_str = f"{currency_symbol}{price}" if price != 'N/A' else 'N/A'
+            # Get check-in and check-out times
+            check_in_time = hotel.get('check_in_time', 'N/A')
+            check_out_time = hotel.get('check_out_time', 'N/A')
             
-            hotel_class = hotel.get('hotel_class', 'N/A')
-            hotel_class_str = f"{hotel_class}⭐" if hotel_class != 'N/A' else 'N/A'
+            price_str = f"{currency_symbol}{price}" if price != 'N/A' else 'N/A'
             
             # Get amenities (first 3) and clean them
             amenities = hotel.get('amenities', [])
@@ -175,60 +193,36 @@ def search_accommodations(location: str, check_in_date: str, check_out_date: str
                 amenities_str = ", ".join(cleaned_amenities)
             else:
                 amenities_str = "N/A"
-            
-            # Get booking link
-            link = hotel.get('link', '#')
-            link_str = f"[View]({link})"
-            
-            # Get GPS coordinates
-            gps = hotel.get('gps_coordinates', {})
-            if isinstance(gps, dict):
-                latitude = gps.get('latitude', 'N/A')
-                longitude = gps.get('longitude', 'N/A')
-                lat_long_str = f"{latitude},{longitude}" if latitude != 'N/A' and longitude != 'N/A' else 'N/A'
-            else:
-                lat_long_str = 'N/A'
 
-            # Get nearby places (first 3) and clean them with transportation info
+            # Get nearby places (first 3) and format them for the Nearby Places column
             nearby_places = hotel.get('nearby_places', [])
             if nearby_places:
-                # Build detailed nearby info with transport
                 nearby_details = []
                 for place in nearby_places[:3]:
                     place_name = place.get('name', 'Unknown').replace('|', '-')
                     transportations = place.get('transportations', [])
-                    
+
                     if transportations:
-                        # Get first transport option
-                        transport = transportations[0]
-                        t_type = transport.get('type', 'N/A')
-                        t_duration = transport.get('duration', 'N/A')
-                        nearby_details.append(f"{place_name} ({t_type}: {t_duration})")
-                    else:
-                        nearby_details.append(place_name)
-                
-                nearby_str = "; ".join(nearby_details) if nearby_details else "N/A"
-                
-                print(f"   📍 Nearby Places:")
-                for place in nearby_places:
-                    place_name = place.get('name', 'Unknown Place')
-                    print(f"      - {place_name}")
-                    
-                    transportations = place.get('transportations', [])
-                    if transportations:
-                        print("         🚌 Transport Options:")
+                        transport_strs = []
                         for transport in transportations:
                             t_type = transport.get('type', 'N/A')
                             t_duration = transport.get('duration', 'N/A')
-                            print(f"            > {t_type}: {t_duration}")
+                            transport_strs.append(f"{t_type}: {t_duration}")
+
+                        transports_joined = "; ".join(transport_strs)
+                        nearby_details.append(f"• {place_name} ({transports_joined})")
+                    else:
+                        nearby_details.append(f"• {place_name}")
+
+                # Join multiple nearby places with line breaks for bullet point list
+                nearby_str = "<br>".join(nearby_details) if nearby_details else "N/A"
             else:
                 nearby_str = "N/A"
-                print("   📍 Nearby Places: N/A")
             
             # Format rating with reviews
             rating_str = f"{rating} ({reviews} reviews)" if rating != 'N/A' else 'N/A'
             
-            output += f"| {i} | {name} | {rating_str} | {price_str} | {hotel_class_str} | {amenities_str} | {lat_long_str} | {nearby_str} | {link_str} |\n"
+            output += f"| {i} | {name} | {rating_str} | {price_str} | {check_in_time} | {check_out_time} | {amenities_str} | {nearby_str} |\n"
         
         # output += "\n*Prices shown are per night for the entire property. Data from Google Hotels via SERP API.*\n"
         
@@ -243,32 +237,32 @@ def search_accommodations(location: str, check_in_date: str, check_out_date: str
 
 # Test code
 if __name__ == "__main__":
-    print("="*80)
-    print("TEST: SERP Hotel Search Tool")
-    print("="*80)
+    # print("="*80)
+    # print("TEST: SERP Hotel Search Tool")
+    # print("="*80)
     
-    # Test 1: Budget hotels with rating filter
-    print("\n" + "="*60)
-    print("TEST 1: Budget Hotels in Goa (Rating 7+)")
-    print("="*60)
+    # # Test 1: Budget hotels with rating filter
+    # print("\n" + "="*60)
+    # print("TEST 1: Budget Hotels in Goa (Rating 7+)")
+    # print("="*60)
     
-    try:
-        result = search_accommodations.invoke({
-            "location": "Goa",
-            "check_in_date": "2025-11-19",
-            "check_out_date": "2025-11-22",
-            "adults": 2,
-            "children": 0,
-            "currency": "INR",
-            "rating": [7, 8, 9],  # Filter for ratings 7-9
-            "query": "Budget hotels and hostels in Goa"
-        })
-        print(result)
-        print("\n✅ Test 1 completed successfully!")
-    except Exception as e:
-        print(f"❌ Error occurred: {str(e)}")
-        import traceback
-        traceback.print_exc()
+    # try:
+    #     result = search_accommodations.invoke({
+    #         "location": "Goa",
+    #         "check_in_date": "2025-11-19",
+    #         "check_out_date": "2025-11-22",
+    #         "adults": 2,
+    #         "children": 0,
+    #         "currency": "INR",
+    #         "rating": [7, 8, 9],  # Filter for ratings 7-9
+    #         "query": "Budget hotels and hostels in Goa"
+    #     })
+    #     print(result)
+    #     print("\n✅ Test 1 completed successfully!")
+    # except Exception as e:
+    #     print(f"❌ Error occurred: {str(e)}")
+    #     import traceback
+    #     traceback.print_exc()
     
     # Test 2: Luxury hotels with higher rating filter (INR for international)
     print("\n" + "="*60)

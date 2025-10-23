@@ -49,6 +49,51 @@ class TravelSearchParams:
     origin_airport: Optional[str] = None
     destination_airport: Optional[str] = None
     
+    # Airport Availability (resolved by intelligent LLM analysis)
+    origin_has_airport: bool = True  # Does origin have direct airport?
+    destination_has_airport: bool = True  # Does destination have direct airport?
+    origin_airport_distance: float = 0.0  # Distance to nearest airport in km (0 if direct)
+    destination_airport_distance: float = 0.0  # Distance to nearest airport in km (0 if direct)
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'TravelSearchParams':
+        """
+        Create TravelSearchParams from dictionary.
+        
+        Args:
+            data: Dictionary with parameter values
+            
+        Returns:
+            TravelSearchParams instance
+        """
+        # Ensure required fields have defaults if missing
+        defaults = {
+            'origin': data.get('origin', 'Not specified'),
+            'destination': data.get('destination', 'Not specified'),
+            'departure_date': data.get('departure_date', '2025-12-01'),
+            'return_date': data.get('return_date'),
+            'travelers': data.get('travelers', 1),
+            'budget_limit': data.get('budget_limit'),
+            'currency': data.get('currency', 'INR'),
+            'transport_modes': data.get('transport_modes') or ["flight", "bus", "train"],
+            'preferred_mode': data.get('preferred_mode'),
+            'trip_type': data.get('trip_type', 'round_trip'),
+            'is_domestic': data.get('is_domestic', True),
+            'is_international': data.get('is_international', False),
+            'budget_priority': data.get('budget_priority', 'moderate'),
+            'time_sensitivity': data.get('time_sensitivity', 'flexible'),
+            'use_serp_for_flights': data.get('use_serp_for_flights', True),
+            'use_perplexity_for_ground': data.get('use_perplexity_for_ground', True),
+            'origin_airport': data.get('origin_airport'),
+            'destination_airport': data.get('destination_airport'),
+            'origin_has_airport': data.get('origin_has_airport', True),
+            'destination_has_airport': data.get('destination_has_airport', True),
+            'origin_airport_distance': data.get('origin_airport_distance', 0.0),
+            'destination_airport_distance': data.get('destination_airport_distance', 0.0),
+        }
+        
+        return cls(**defaults)
+    
     def validate(self) -> List[str]:
         """Validate parameters and return list of errors"""
         errors = []
