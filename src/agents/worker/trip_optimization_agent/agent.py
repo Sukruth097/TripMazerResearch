@@ -232,7 +232,7 @@ class TripOptimizationAgent:
                 "departure_date": "YYYY-MM-DD format (convert dates like 25-10-25 to 2025-10-25) - REQUIRED, use 2025-12-01 if not specified",
                 "return_date": "YYYY-MM-DD format or null for one-way (calculate from trip duration)",
                 "travelers": "number of travelers (extract from '3 people', '2 persons', etc.)",
-                "budget_limit": "budget amount (number only) - REQUIRED, use 30000 if not specified (extract from '30000rs', 'budget 50k', etc.)",
+                "budget_limit": "budget amount (number only) or null if not mentioned (extract from '30000rs', 'budget 50k', etc.)",
                 "currency": "INR for all destinations (always use INR)",
                 "transport_modes": ["flight", "bus", "train"] - extract from user preference (buses → ["bus", "train"], flights → ["flight"]),
                 "preferred_mode": "user's preferred transport mode or null (extract 'prefer buses' → 'bus')",
@@ -252,11 +252,9 @@ class TripOptimizationAgent:
                - "from 1st Dec to 5th Dec 2025" → departure_date="2025-12-01", return_date="2025-12-05"
                - CRITICAL: Extract exact dates from query, don't use fallback dates unless NO dates mentioned
                - If no date mentioned → departure_date="2025-12-01"
-            3. **Budget (NEVER null)**:
+            3. **Budget (can be null)**:
                - "30000rs", "30k", "budget 30000" → budget_limit=30000
-               - "budget stays", "cheap", "economical" → budget_limit=20000
-               - **DOMESTIC trips**: If no budget mentioned → budget_limit=30000
-               - **INTERNATIONAL trips**: If no budget mentioned → budget_limit=100000 (flights are expensive)
+               - If no budget mentioned → budget_limit=null (let interactive system ask user)
             4. **Transport**:
                - "prefer buses" → transport_modes=["bus", "train"], preferred_mode="bus"
                - "flight only" → transport_modes=["flight"]
@@ -302,20 +300,8 @@ class TripOptimizationAgent:
             # Parse response
             extracted_data = json.loads(response_text)
             
-            # Add fallbacks for missing critical fields
-            if not extracted_data.get('departure_date'):
-                extracted_data['departure_date'] = "2025-12-01"  # Default date
-                self.logger.warning("⚠️ No departure_date extracted, using default: 2025-12-01")
-                
-            if not extracted_data.get('budget_limit'):
-                # Set higher default budget for international trips
-                is_international = not extracted_data.get('is_domestic', True)
-                if is_international:
-                    extracted_data['budget_limit'] = 100000  # Higher default for international
-                    self.logger.warning("⚠️ No budget_limit extracted for international trip, using default: 100000")
-                else:
-                    extracted_data['budget_limit'] = 30000  # Default budget for domestic
-                    self.logger.warning("⚠️ No budget_limit extracted for domestic trip, using default: 30000")
+            # No fallbacks - let interactive system handle missing parameters
+            self.logger.info(f"✅ Extracted parameters: {extracted_data}")
             
             # Create TravelSearchParams entity
             params = TravelSearchParams.from_dict(extracted_data)
@@ -877,24 +863,55 @@ Raw search results below:
             self.logger.info(f"  ✅ {remaining_tool.capitalize()}: ₹{current_allocation:,.0f} → ₹{new_allocation:,.0f} (+₹{per_tool_bonus:,.0f})")
     
     @retry_on_overload(max_retries=3, initial_delay=2)
-    def _extract_complete_trip_parameters(self, query: str) -> Dict[str, Any]:
+    def _extract_complete_trip_parameters(self, query: str, conversation_history: list = None) -> Dict[str, Any]:
         """
         Single LLM call to extract ALL trip parameters including travel params, preferences, routing, and budget allocation.
-        This replaces multiple separate LLM calls for better consistency and performance.
+        Now uses conversation history to understand context from previous messages.
+        
+        Args:
+            query: Current user query
+            conversation_history: Previous conversation messages for context
         
         Returns:
             Dict with all parameters needed for trip planning
         """
-        self.logger.info("🧠 Extracting ALL trip parameters in single Azure OpenAI call...")
+        self.logger.info("🧠 Extracting ALL trip parameters with conversation history...")
         self.logger.info(f"Query: '{query[:200]}...'")
+        if conversation_history:
+            self.logger.info(f"Using {len(conversation_history)} previous messages for context")
         
         try:
-            system_prompt = """You are a comprehensive travel planning expert. Extract ALL travel parameters, preferences, routing order, and budget allocation from a single natural language query. Ensure consistency across all extracted parameters."""
+            system_prompt = """You are a comprehensive travel planning expert. FIRST, validate if the query is travel-related. If NOT travel-related, return {"error": "non_travel_query"}. 
+
+            TRAVEL-RELATED TOPICS: trip planning, destinations, flights, hotels, restaurants, itineraries, activities, tourism, vacation planning, travel dates, budget, transportation, accommodation, dining, sightseeing, attractions, places to visit.
+
+            NON-TRAVEL TOPICS: programming, general knowledge, science, math, health, business (unless travel business), technology (unless travel tech), jokes, random conversations, greetings without travel context.
+
+            If query IS travel-related, extract ALL travel parameters, preferences, routing order, and budget allocation from the current query AND previous conversation history. Use conversation context to fill in missing details."""
+            
+            # Format conversation history for context
+            history_context = ""
+            if conversation_history and len(conversation_history) > 1:  # More than just current query
+                history_context = "\n\nCONVERSATION CONTEXT (combine all information):\n"
+                for i, msg in enumerate(conversation_history[:-1]):  # Exclude current query (last message)
+                    role = msg.get("role", "unknown")
+                    content = msg.get("content", "")[:300]  # More content for better context
+                    history_context += f"Message {i+1} ({role.upper()}): {content}\n"
+                history_context += f"\nCRITICAL: Merge information from ALL above messages with current query to extract complete trip parameters.\n"
             
             user_prompt = f"""
-            TASK: Extract ALL travel planning parameters from natural language query in a single comprehensive analysis.
+            TASK: Extract ALL travel planning parameters from the current query, using conversation history to understand missing context.
             
-            QUERY: "{query}"
+            CURRENT QUERY: "{query}"{history_context}
+            
+            INSTRUCTIONS:
+            - Use BOTH the current query AND conversation history to extract complete parameters
+            - CRITICAL: Combine information from ALL previous messages with current query
+            - If budget/dates/locations mentioned in ANY previous message, use that information
+            - If current query only provides partial info (like "budget 50k"), combine with ALL previous context
+            - Previous trip details should be preserved and merged with new information
+            - Do NOT ignore previous conversation - treat it as part of the complete request
+            - Always provide complete, consistent parameters across all sections
             
             Extract ALL of the following in one comprehensive JSON response:
             
@@ -902,10 +919,10 @@ Raw search results below:
                 "travel_params": {{
                     "origin": "departure city (extract from 'from X', 'Bangalore to')",
                     "destination": "arrival city (extract from 'to X', 'to Coorg')",
-                    "departure_date": "YYYY-MM-DD (CRITICAL: extract exact date from query like 25-10-25 → 2025-10-25)",
+                    "departure_date": "YYYY-MM-DD (extract exact date and auto-add 2025 if year missing: '9th Nov' → '2025-11-09', '25-10-25' → '2025-10-25') or null if not mentioned",
                     "return_date": "YYYY-MM-DD or null (calculate from departure + duration)",
-                    "travelers": "number (extract from '3 people', '2 persons')",
-                    "budget_limit": "number (extract from '30000rs', 'budget 50k')",
+                    "travelers": "number (extract from '3 people', '2 persons', default 1 if not mentioned)",
+                    "budget_limit": "number (extract from '30000rs', 'budget 50k') or null if not mentioned",
                     "currency": "INR",
                     "transport_modes": ["bus", "train"] for domestic OR ["flight"] for international,
                     "preferred_mode": "bus/train/flight based on user preference and route type",
@@ -955,7 +972,19 @@ Raw search results below:
             - **Domestic Routes**: Can use ["bus", "train", "flight"] based on user preference
             - **International Routes**: ONLY ["flight"] (buses/trains don't cross international borders)
             
-            **EXAMPLES:**
+            **DATE EXTRACTION EXAMPLES:**
+            - "9th Nov" → "2025-11-09"
+            - "December 15" → "2025-12-15" 
+            - "25-10-25" → "2025-10-25"
+            - "from 1st Dec to 5th Dec" → departure_date="2025-12-01", return_date="2025-12-05"
+            - No date mentioned → departure_date="2025-12-01"
+            
+            **BUDGET EXTRACTION EXAMPLES:**
+            - "30000rs", "30k", "budget 30000" → budget_limit=30000
+            - No budget mentioned → budget_limit=null (let interactive system ask)
+            - CRITICAL: Only extract if explicitly mentioned, otherwise return null
+            
+            **TRANSPORT EXAMPLES:**
             - Bangalore → Coorg = is_domestic: true, transport_modes: ["bus", "train"] (if user prefers ground transport)
             - Mumbai → Delhi = is_domestic: true, transport_modes: ["flight", "train"] (if user wants speed)  
             - Bangalore → Dubai = is_domestic: false, transport_modes: ["flight"] (ONLY flights for international)
@@ -967,14 +996,23 @@ Raw search results below:
             - Example: "Plan a 4-day itinerary for Coorg from Bangalore for 3 people from 2025-10-25 to 2025-10-29 with budget 30000rs. We prefer morning viewpoints, trekking spots, and waterfalls."
             
             CRITICAL RULES:
-            1. **Date Extraction**: MUST extract exact dates from query (25-10-25 → 2025-10-25, NOT 2025-12-01)
-            2. **Domestic Detection**: AUTOMATICALLY determine based on city locations above
-            3. **Transport Logic**: 
+            1. **Date Extraction**: MUST extract exact dates from query and auto-add year 2025 if missing:
+               - "25-10-25" → "2025-10-25"
+               - "9th Nov" → "2025-11-09" 
+               - "December 15" → "2025-12-15"
+               - If NO date mentioned → use "2025-12-01"
+            2. **Budget Extraction**: Return null if not mentioned, let interactive system ask user:
+               - "30k" → 30000, "50000rs" → 50000
+               - If no budget mentioned → return null (no default values)
+            3. **Date Extraction**: Return null if not mentioned, let interactive system ask user:
+            3. **Domestic Detection**: AUTOMATICALLY determine based on city locations above
+            4. **Transport Logic**: 
                - Domestic routes: Can use bus/train/flight based on user preference
                - International routes: ONLY flight (no buses/trains cross borders)
-            4. **Consistency**: travel_params.origin = preferences.from_location, etc.
-            5. **No Null Values**: Always provide valid values for all fields
-            6. **Tool Queries**: 
+            5. **Consistency**: travel_params.origin = preferences.from_location, etc.
+            6. **CONVERSATION MEMORY**: If information was mentioned in previous messages, USE IT even if not in current query
+            7. **CONVERSATION EXAMPLE**: Previous: "Plan trip from Bangalore to Dubai for 2 people from 8th November. Budget stays" + Current: "budget 400000" = Should extract Bangalore→Dubai, 2 people, Nov 8, budget_limit=400000, accommodation_preference="budget"
+            8. **Tool Queries**: 
                - travel_query: Simple search queries
                - accommodation_query: Simple search queries  
                - itinerary_query: COMPREHENSIVE queries with all trip details (dates, people, budget, preferences)
@@ -1081,12 +1119,49 @@ Raw search results below:
             # Parse comprehensive response
             all_params = json.loads(response_text)
             
+            # Check if query was identified as non-travel
+            if all_params.get("error") == "non_travel_query":
+                self.logger.info("🚫 Query identified as non-travel related")
+                return {"error": "non_travel_query"}
+            
             self.logger.info(f"✅ Extracted comprehensive parameters in single call")
             return all_params
             
         except Exception as e:
             self.logger.error(f"Comprehensive extraction failed: {e}")
             return self._basic_comprehensive_fallback(query)
+    
+    def _check_missing_parameters(self, travel_params: Dict[str, Any]) -> List[str]:
+        """
+        Check for missing critical parameters that require user input.
+        
+        Args:
+            travel_params: Extracted travel parameters
+            
+        Returns:
+            List of missing parameter names
+        """
+        missing = []
+        
+        # Check for missing budget (no fallback values)
+        budget = travel_params.get('budget_limit')
+        if not budget:
+            missing.append("budget")
+        
+        # Check for missing dates (no fallback values)
+        departure_date = travel_params.get('departure_date')
+        if not departure_date:
+            missing.append("travel dates")
+        
+        # Check for missing locations
+        origin = travel_params.get('origin')
+        destination = travel_params.get('destination')
+        if not origin or origin == "Not specified":
+            missing.append("departure location")
+        if not destination or destination == "Not specified":
+            missing.append("destination")
+        
+        return missing
     
     def _basic_comprehensive_fallback(self, query: str) -> Dict[str, Any]:
         """Fallback for comprehensive parameter extraction."""
@@ -1378,7 +1453,7 @@ Raw search results below:
                     self.logger.info(f"✅ CORRECTED routing order: {routing_order}")
                 
                 validated_preferences = {
-                    'budget': preferences.get('budget'),  # No default budget - must come from query
+                    'budget': preferences.get('budget') or 30000,  # Default budget to prevent None errors
                     'currency': 'INR',  # Always use INR for all destinations
                     'dates': preferences.get('dates', 'Not specified'),
                     'from_location': preferences.get('from_location', 'Not specified'),
@@ -1409,9 +1484,9 @@ Raw search results below:
         
         query_lower = query.lower()
         
-        # Default preferences
+        # Default preferences with safe numeric values
         preferences = {
-            'budget': None,
+            'budget': 30000,  # Default budget to prevent None errors
             'currency': 'INR',  # Always use INR
             'dates': 'Not specified',
             'from_location': 'Not specified',
@@ -1505,12 +1580,21 @@ Raw search results below:
             else:
                 self.logger.warning(f"⚠️ Priority tool '{priority_tool}' not in allocation, skipping bonus adjustment")
         
-        # Convert to absolute amounts (with safety check for total_budget)
+        # Convert to absolute amounts (with safety check for total_budget and percentages)
         if not total_budget or total_budget <= 0:
             self.logger.warning(f"⚠️ Invalid total_budget: {total_budget}, using default 30000")
             total_budget = 30000
         
-        budget_allocation = {tool: total_budget * percentage for tool, percentage in allocation.items()}
+        # Ensure all percentages are valid numbers
+        safe_allocation = {}
+        for tool, percentage in allocation.items():
+            if percentage is None or not isinstance(percentage, (int, float)):
+                self.logger.warning(f"⚠️ Invalid percentage for {tool}: {percentage}, using 0.33")
+                safe_allocation[tool] = 0.33
+            else:
+                safe_allocation[tool] = percentage
+        
+        budget_allocation = {tool: total_budget * percentage for tool, percentage in safe_allocation.items()}
         
         self.logger.info(f"💰 Budget allocation based on preferences: {[f'{k}: {v:.1%}' for k, v in allocation.items()]}")
         self.logger.info(f"💰 Absolute budget amounts: {[f'{k}: ₹{v:.0f}' for k, v in budget_allocation.items()]}")
@@ -2293,9 +2377,24 @@ Suggest restaurants for various meal times and occasions."""
         self.logger.info("=" * 100)
         
         try:
-            # Reset state
+            # Preserve conversation history across calls
+            existing_history = []
+            if hasattr(self, 'state_manager') and self.state_manager and self.state_manager.state:
+                existing_history = self.state_manager.state.get("history", [])
+            
+            # Reset state but preserve history
             reset_state()
             self.state_manager = get_state_manager()
+            
+            # Restore conversation history
+            if existing_history:
+                self.state_manager.state["history"] = existing_history
+                self.logger.info(f"💭 Restored {len(existing_history)} previous messages from conversation history")
+            else:
+                self.state_manager.state["history"] = []
+            
+            # Add current user query to conversation history
+            self.state_manager.state["history"].append({"role": "user", "content": query})
             
             # Step 1: Extract ALL parameters in single comprehensive call
             yield {
@@ -2305,13 +2404,44 @@ Suggest restaurants for various meal times and occasions."""
                 "progress": 10
             }
             
-            # Single comprehensive extraction
-            all_params = self._extract_complete_trip_parameters(query)
+            # Single comprehensive extraction with conversation context
+            conversation_history = self.state_manager.state.get("history", [])
+            all_params = self._extract_complete_trip_parameters(query, conversation_history)
+            
+            # Check if query was identified as non-travel
+            if all_params.get("error") == "non_travel_query":
+                yield {
+                    "status": "completed",
+                    "step": "response",
+                    "message": "Please ask anything related to travel, itinerary or restaurant",
+                    "data": None,
+                    "progress": 100
+                }
+                return
             
             # Extract components
             travel_params = all_params.get('travel_params', {})
             preferences = all_params.get('preferences', {})
             routing_order = all_params.get('routing_order', ['travel', 'accommodation', 'itinerary'])
+            
+            # Check for missing critical parameters
+            missing_params = self._check_missing_parameters(travel_params)
+            
+            if missing_params:
+                # Ask user for missing parameters instead of using defaults
+                missing_list = ", ".join(missing_params)
+                yield {
+                    "status": "needs_input",
+                    "step": "missing_parameters", 
+                    "message": f"❓ Please provide: {missing_list}",
+                    "missing_parameters": missing_params,
+                    "data": {
+                        "current_params": travel_params,
+                        "missing": missing_params
+                    },
+                    "progress": 15
+                }
+                return  # Stop execution and wait for user input
             
             # Simple fallback - the AI should provide proper budget_allocation based on prompts
             budget_allocation = all_params.get('budget_allocation', {'travel': 0.33, 'accommodation': 0.33, 'itinerary': 0.34})
@@ -2360,8 +2490,22 @@ Suggest restaurants for various meal times and occasions."""
                 "progress": 25
             }
             
-            # Convert percentage allocation to absolute amounts
-            allocation = {tool: budget * percentage for tool, percentage in budget_allocation.items()}
+            # Convert percentage allocation to absolute amounts with safety checks
+            if not budget or budget <= 0:
+                self.logger.warning(f"⚠️ Invalid budget: {budget}, using default 30000")
+                budget = 30000
+            
+            # Ensure budget_allocation contains valid percentages
+            if not budget_allocation or not isinstance(budget_allocation, dict):
+                self.logger.warning("⚠️ Invalid budget_allocation, using default")
+                budget_allocation = {"travel": 0.35, "accommodation": 0.35, "itinerary": 0.30}
+            
+            allocation = {}
+            for tool, percentage in budget_allocation.items():
+                if percentage is None or not isinstance(percentage, (int, float)):
+                    self.logger.warning(f"⚠️ Invalid percentage for {tool}: {percentage}, using 0.33")
+                    percentage = 0.33
+                allocation[tool] = budget * percentage
             self.state_manager.allocate_budget(allocation)
             self.state_manager.set_tool_sequence(routing_order)
             
