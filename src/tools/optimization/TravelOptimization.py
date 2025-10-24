@@ -38,11 +38,37 @@ def _extract_flight_details(flight_data: Dict[str, Any], adults: int) -> Dict[st
             for f in flight_data.get('flights', [])
         ])
         
-        # adults = ','.join([
-        #     f.get('adults', 'Unknown')
-        #     for f in flight_data.get('flights', [])
-        # ])
+        arrival_airport = ', '.join([   
+            f"{f.get('arrival_airport', {}).get('name', 'N/A')} ({f.get('arrival_airport', {}).get('time', 'N/A')})"
+            for f in flight_data.get('flights', [])
+        ])
         
+        departure_airport = ', '.join([
+            f"{f.get('departure_airport', {}).get('name', 'N/A')} ({f.get('departure_airport', {}).get('time', 'N/A')})"
+            for f in flight_data.get('flights', [])
+        ])
+        
+        layovers = flight_data.get("layovers")
+        if layovers:
+            for layover in layovers:
+                print(f" - {layover['name']} ({layover['id']}) | Duration: {layover['duration']} minutes")
+            # Format layover information for display
+            layover_details = []
+            for layover in layovers:
+                duration_hours = layover.get('duration', 0) // 60
+                duration_mins = layover.get('duration', 0) % 60
+                if duration_hours > 0:
+                    duration_str = f"{duration_hours}h {duration_mins}m"
+                else:
+                    duration_str = f"{duration_mins}m"
+                # Include full airport name along with code and duration
+                airport_name = layover.get('name', 'Unknown Airport')
+                airport_code = layover.get('id', 'N/A')
+                layover_details.append(f"{airport_name} ({airport_code}) | Duration: {duration_str}")
+            layover_info = ", ".join(layover_details)
+        else:
+            layover_info = "Direct"
+            
         travel_class = ', '.join([
             f.get('travel_class', 'Unknown')
             for f in flight_data.get('flights', [])
@@ -70,12 +96,8 @@ def _extract_flight_details(flight_data: Dict[str, Any], adults: int) -> Dict[st
         )
         
         # Extract duration in minutes
-        duration_minutes = (
-            main_flight.get('duration')
-            or flight_data.get('total_duration')
-            or 0
-        )
-        # adults = flight_data.get('adults',1)
+        duration_minutes = flight_data.get('total_duration') or flight_data.get('duration') or 0
+        
         price = int(flight_data.get('price', 0)/adults)
         
         # Extract carbon emissions in grams
@@ -90,6 +112,9 @@ def _extract_flight_details(flight_data: Dict[str, Any], adults: int) -> Dict[st
             'airplane_names': airplane_names,
             'travel_class': travel_class,
             'flight_number': flight_number,
+            'layovers': layover_info,
+            'departure_airport': departure_airport,
+            'arrival_airport': arrival_airport,
             # 'carbon_grams': carbon_grams
         }
     except Exception as e:
@@ -100,6 +125,9 @@ def _extract_flight_details(flight_data: Dict[str, Any], adults: int) -> Dict[st
             'duration_minutes': 0,
             'price_per_person': 0,
             'carbon_grams': 0,
+            'layovers': 'N/A',
+            'departure_airport': 'N/A',
+            'arrival_airport': 'N/A',
             'parse_error': str(e)
         }
 
@@ -605,8 +633,8 @@ def format_travel_results_as_markdown(results: Dict[str, Any]) -> str:
             
             if outbound_flights:
                 output.append(f"**>> Outbound Journey ({origin} → {destination}) - {departure_date}**\n")
-                output.append("| # | Airline | Aircraft/Flight# | Class | Departure | Arrival | Duration | Price/Person |")
-                output.append("|---|---------|------------------|-------|-----------|---------|----------|-------|")
+                output.append("| # | Airline | Aircraft/Flight# | Class | Departure Airport | Arrival Airport | Departure | Arrival | Duration | Layovers | Price/Person |")
+                output.append("|---|---------|------------------|-------|-------------------|-----------------|-----------|---------|----------|----------|-------|")
                 
                 for idx, flight in enumerate(outbound_flights[:3], 1):
                     airline = flight.get('airline', 'Unknown')[:30]
@@ -629,16 +657,19 @@ def format_travel_results_as_markdown(results: Dict[str, Any]) -> str:
                     duration_min = flight.get('duration_minutes', 0)
                     duration = f"{duration_min//60}h {duration_min%60}m" if duration_min else "N/A"
                     price = flight.get('price_per_person', 0)
+                    layovers = flight.get('layovers', 'Direct')
+                    departure_airport = flight.get('departure_airport', 'N/A')
+                    arrival_airport = flight.get('arrival_airport', 'N/A')
                     
-                    output.append(f"| {idx} | {airline} | {aircraft_info} | {travel_class} | {departure} | {arrival} | {duration} | ₹{price:,.0f} |")
+                    output.append(f"| {idx} | {airline} | {aircraft_info} | {travel_class} | {departure_airport} | {arrival_airport} | {departure} | {arrival} | {duration} | {layovers} | ₹{price:,.0f} |")
                 output.append("")
             else:
                 output.append(f"⚠️ No flight options available for outbound journey.\n")
             
             if return_flights and return_date:
                 output.append(f"**<< Return Journey ({destination} → {origin}) - {return_date}**\n")
-                output.append("| # | Airline | Aircraft/Flight# | Class | Departure | Arrival | Duration | Price/Person |")
-                output.append("|---|---------|------------------|-------|-----------|---------|----------|-------|")
+                output.append("| # | Airline | Aircraft/Flight# | Class | Departure Airport | Arrival Airport | Departure | Arrival | Duration | Layovers | Price/Person |")
+                output.append("|---|---------|------------------|-------|-------------------|-----------------|-----------|---------|----------|----------|-------|")
                 
                 for idx, flight in enumerate(return_flights[:3], 1):
                     airline = flight.get('airline', 'Unknown')[:30]
@@ -661,8 +692,11 @@ def format_travel_results_as_markdown(results: Dict[str, Any]) -> str:
                     duration_min = flight.get('duration_minutes', 0)
                     duration = f"{duration_min//60}h {duration_min%60}m" if duration_min else "N/A"
                     price = flight.get('price_per_person', 0)
+                    layovers = flight.get('layovers', 'Direct')
+                    departure_airport = flight.get('departure_airport', 'N/A')
+                    arrival_airport = flight.get('arrival_airport', 'N/A')
                     
-                    output.append(f"| {idx} | {airline} | {aircraft_info} | {travel_class} | {departure} | {arrival} | {duration} | ₹{price:,.0f} |")
+                    output.append(f"| {idx} | {airline} | {aircraft_info} | {travel_class} | {departure_airport} | {arrival_airport} | {departure} | {arrival} | {duration} | {layovers} | ₹{price:,.0f} |")
                 output.append("")
             elif return_date:
                 output.append(f"⚠️ No flight options available for return journey.\n")
@@ -772,18 +806,18 @@ if __name__ == "__main__":
     print("Testing Unified Travel Search Tool...")
     
     test_result = travel_search_tool.invoke({
-            "origin": "Mumbai",
-            "destination": "Delhi",
-            "origin_airport": "BOM",
-            "destination_airport": "DEL",
-            "departure_date": "2025-12-01",
+            "origin": "Bangalore",
+            "destination": "Dubai",
+            "origin_airport": "BLR",
+            "destination_airport": "DXB",
+            "departure_date": "2025-10-30",
             "transport_modes": ["flight"],
             "travelers": 2,
-            "return_date": "2025-12-05",
+            "return_date": "2025-10-31",
             # "budget_limit": 35000,
             "sort_by": 2,
             "currency": "INR",
-            "is_domestic": True
+            "is_domestic": False
         })
         
     

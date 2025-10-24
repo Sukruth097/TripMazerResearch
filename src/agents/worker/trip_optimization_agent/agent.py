@@ -500,19 +500,19 @@ class TripOptimizationAgent:
     @retry_on_overload(max_retries=3, initial_delay=2)
     def format_travel_results_with_prompt(self, raw_results: str, user_context: Dict[str, Any]) -> str:
         """
-        Format travel search results using AI-powered prompt instead of hardcoded methods.
+        Format travel search results using AI-powered prompt with Quick Insights.
         
-        This replaces the multiple formatting methods that were in the tools.
-        The agent uses its AI capabilities to intelligently format results.
+        This method now generates both Quick Insights and detailed tables in one AI call.
+        The agent uses its AI capabilities to intelligently analyze and format results.
         
         Args:
             raw_results: Raw JSON results from travel_search_tool
             user_context: User preferences and context
             
         Returns:
-            Formatted travel results as markdown tables
+            Quick Insights + Formatted travel results as markdown tables
         """
-        self.logger.info("Formatting travel results with Azure OpenAI...")
+        self.logger.info("Formatting travel results with Quick Insights using Azure OpenAI...")
         
         try:
             # Parse raw results if it's JSON string
@@ -529,7 +529,13 @@ class TripOptimizationAgent:
             travelers = user_context.get('travelers', 1)
             preferred_mode = user_context.get('preferred_mode', 'any')
             
-            system_prompt = """You are a travel results formatting expert. Format travel search results into beautiful, professional markdown tables with clear pricing and recommendations."""
+            system_prompt = """You are a travel results formatting expert. Format travel search results into beautiful, professional markdown tables with clear pricing and recommendations. 
+
+IMPORTANT: Start your response with Quick Insights section, then follow with detailed tables.
+
+REQUIRED OUTPUT STRUCTURE:
+1. First: Quick Insights summary (analyzing best options)
+2. Second: Detailed travel tables with all options"""
             
             user_prompt = f"""
             TASK: Format travel search results into beautiful, professional markdown tables.
@@ -605,6 +611,24 @@ class TripOptimizationAgent:
             
             OUTPUT STRUCTURE:
             # Travel Search Results
+            
+            ## 📊 Quick Insights
+            
+            🛫 **Cheapest Roundtrip**: [Airline] ([Direct/via connection]) — ₹[total_price] total/person
+            
+            ⏱️ **Shortest Travel Time**: [Airline] ([Direct/with connection]) — [duration] each way
+            
+            🌍 **Best Layover Experience**: [Airline] [layover details with airport name and duration]
+            
+            💼 **Best for Comfort**: [Airline] ([aircraft/features])
+            
+            QUICK INSIGHTS RULES:
+            - Analyze all available flight data to find genuine best options
+            - For cheapest: Calculate outbound + return price per person
+            - For fastest: Use minimum duration_minutes, convert to hours/minutes
+            - For layovers: Use the layovers field data (airport name and duration)
+            - For comfort: Identify premium airlines or spacious aircraft
+            - If no flights, adapt format for available transport modes (trains/buses)
             
             ## Flight Options
             
