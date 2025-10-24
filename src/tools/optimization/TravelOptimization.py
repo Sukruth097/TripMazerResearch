@@ -509,7 +509,7 @@ def _search_ground_transport_with_perplexity(params: TravelSearchParams, modes: 
 def travel_search_tool(origin: str, destination: str, departure_date: str, 
                       transport_modes: List[str], travelers: int = 1,
                       return_date: Optional[str] = None, budget_limit: Optional[float] = None, 
-                      currency: str = "INR", origin_airport: Optional[str] = None,
+                      currency: str = "INR", currency_symbol: str = "₹", origin_airport: Optional[str] = None,
                       destination_airport: Optional[str] = None, is_domestic: bool = True,
                       trip_type: str = "round_trip") -> str:
     """
@@ -528,6 +528,7 @@ def travel_search_tool(origin: str, destination: str, departure_date: str,
         return_date: Return date for round trips
         budget_limit: Budget limit
         currency: Currency code (always INR)
+        currency_symbol: Currency symbol (default ₹)
         origin_airport: Airport code resolved by agent (optional)
         destination_airport: Airport code resolved by agent (optional) 
         is_domestic: Whether route is domestic
@@ -541,7 +542,7 @@ def travel_search_tool(origin: str, destination: str, departure_date: str,
             origin="Mumbai", destination="Delhi", 
             departure_date="2024-12-01", return_date="2024-12-05",
             transport_modes=["flight", "train"], travelers=2,
-            budget_limit=15000, currency="INR", 
+            budget_limit=15000, currency="INR", currency_symbol="₹",
             origin_airport="BOM", destination_airport="DEL",
             is_domestic=True
         )
@@ -550,7 +551,8 @@ def travel_search_tool(origin: str, destination: str, departure_date: str,
         results = travel_search_tool(
             origin="Mumbai", destination="Delhi",
             departure_date="2024-12-01", 
-            transport_modes=["flight"], travelers=1
+            transport_modes=["flight"], travelers=1,
+            currency="USD", currency_symbol="$"
         )
     """
     try:
@@ -563,6 +565,7 @@ def travel_search_tool(origin: str, destination: str, departure_date: str,
             travelers=travelers,
             budget_limit=budget_limit,
             currency=currency,
+            currency_symbol=currency_symbol,
             transport_modes=transport_modes,
             trip_type=trip_type,
             is_domestic=is_domestic,
@@ -610,10 +613,14 @@ def travel_search_tool(origin: str, destination: str, departure_date: str,
         # Simple error handling as requested
         raise Exception(f"Travel search failed: {str(e)}")
 
-def format_travel_results_as_markdown(results: Dict[str, Any]) -> str:
+def format_travel_results_as_markdown(results: Dict[str, Any], currency_symbol: Optional[str] = None) -> str:
     """
     Format travel search results into clean Markdown tables for better user experience.
     Handles both flights and ground transport (buses/trains).
+    
+    Args:
+        results: Travel search results dictionary
+        currency_symbol: Currency symbol to use (defaults to ₹ if not provided)
     """
     try:
         # Parse results structure
@@ -626,6 +633,10 @@ def format_travel_results_as_markdown(results: Dict[str, Any]) -> str:
         
         search_params = parsed.get('search_params', {})
         result_data = parsed.get('results', {})
+        
+        # Use currency_symbol from search_params if available, otherwise use provided or default
+        if currency_symbol is None:
+            currency_symbol = search_params.get('currency_symbol', '₹')
         
         origin = search_params.get('origin', 'Origin')
         destination = search_params.get('destination', 'Destination') 
@@ -671,7 +682,7 @@ def format_travel_results_as_markdown(results: Dict[str, Any]) -> str:
                     layovers = flight.get('layovers', 'Direct')
                     route_flow = flight.get('route_flow', 'N/A')
                     
-                    output.append(f"| {idx} | {flight_info} | {route_flow} | ₹{price:,.0f} | {departure} | {arrival} | {duration} | {layovers} | {travel_class} |")
+                    output.append(f"| {idx} | {flight_info} | {route_flow} | {currency_symbol}{price:,.0f} | {departure} | {arrival} | {duration} | {layovers} | {travel_class} |")
                 output.append("")
             else:
                 output.append(f"⚠️ No flight options available for outbound journey.\n")
@@ -705,7 +716,7 @@ def format_travel_results_as_markdown(results: Dict[str, Any]) -> str:
                     layovers = flight.get('layovers', 'Direct')
                     route_flow = flight.get('route_flow', 'N/A')
                     
-                    output.append(f"| {idx} | {flight_info} | {route_flow} | ₹{price:,.0f} | {departure} | {arrival} | {duration} | {layovers} | {travel_class} |")
+                    output.append(f"| {idx} | {flight_info} | {route_flow} | {currency_symbol}{price:,.0f} | {departure} | {arrival} | {duration} | {layovers} | {travel_class} |")
                 output.append("")
             elif return_date:
                 output.append(f"⚠️ No flight options available for return journey.\n")
@@ -731,7 +742,7 @@ def format_travel_results_as_markdown(results: Dict[str, Any]) -> str:
                     price = bus.get('price_per_person', 0)
                     platform = bus.get('platform', 'N/A')
                     
-                    output.append(f"| {idx} | {operator} | ₹{price:,.0f} | {departure} | {arrival} | {duration} | {service} | {platform} |")
+                    output.append(f"| {idx} | {operator} | {currency_symbol}{price:,.0f} | {departure} | {arrival} | {duration} | {service} | {platform} |")
                 output.append("")
             else:
                 output.append(f"⚠️ No bus options available for outbound journey.\n")
@@ -751,7 +762,7 @@ def format_travel_results_as_markdown(results: Dict[str, Any]) -> str:
                     price = bus.get('price_per_person', 0)
                     platform = bus.get('platform', 'N/A')
                     
-                    output.append(f"| {idx} | {operator} | ₹{price:,.0f} | {departure} | {arrival} | {duration} | {service} | {platform} |")
+                    output.append(f"| {idx} | {operator} | {currency_symbol}{price:,.0f} | {departure} | {arrival} | {duration} | {service} | {platform} |")
                 output.append("")
             elif return_date:
                 output.append(f"⚠️ No bus options available for return journey.\n")
@@ -773,7 +784,7 @@ def format_travel_results_as_markdown(results: Dict[str, Any]) -> str:
                     price = train.get('price_per_person', 0)
                     platform = train.get('platform', 'N/A')
                     
-                    output.append(f"| {idx} | {operator} | ₹{price:,.0f} | {departure} | {arrival} | {duration} | {service} | {platform} |")
+                    output.append(f"| {idx} | {operator} | {currency_symbol}{price:,.0f} | {departure} | {arrival} | {duration} | {service} | {platform} |")
                 output.append("")
             else:
                 output.append(f"⚠️ No train options available for outbound journey.\n")
@@ -793,7 +804,7 @@ def format_travel_results_as_markdown(results: Dict[str, Any]) -> str:
                     price = train.get('price_per_person', 0)
                     platform = train.get('platform', 'N/A')
                     
-                    output.append(f"| {idx} | {operator} | ₹{price:,.0f} | {departure} | {arrival} | {duration} | {service} | {platform} |")
+                    output.append(f"| {idx} | {operator} | {currency_symbol}{price:,.0f} | {departure} | {arrival} | {duration} | {service} | {platform} |")
                 output.append("")
             elif return_date:
                 output.append(f"⚠️ No train options available for return journey.\n")

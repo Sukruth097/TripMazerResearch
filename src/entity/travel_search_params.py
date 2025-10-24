@@ -27,6 +27,7 @@ class TravelSearchParams:
     # Budget & Currency
     budget_limit: Optional[float] = None
     currency: str = "INR"
+    currency_symbol: str = "₹"
     
     # Transport Preferences
     transport_modes: List[str] = None  # ["flight", "bus", "train"]
@@ -40,6 +41,7 @@ class TravelSearchParams:
     # User Preferences
     budget_priority: str = "moderate"  # "tight", "moderate", "flexible"
     time_sensitivity: str = "flexible"  # "urgent", "moderate", "flexible"
+    preference_type: str = "mid-range"  # "budget", "mid-range", "luxury" for accommodation preferences
     
     # Provider Instructions (for agent to specify)
     use_serp_for_flights: bool = True
@@ -75,6 +77,7 @@ class TravelSearchParams:
             'travelers': data.get('travelers', 1),
             'budget_limit': data.get('budget_limit'),
             'currency': data.get('currency', 'INR'),
+            'currency_symbol': data.get('currency_symbol', '₹'),
             'transport_modes': data.get('transport_modes') or ["flight", "bus", "train"],
             'preferred_mode': data.get('preferred_mode'),
             'trip_type': data.get('trip_type', 'round_trip'),
@@ -82,6 +85,7 @@ class TravelSearchParams:
             'is_international': data.get('is_international', False),
             'budget_priority': data.get('budget_priority', 'moderate'),
             'time_sensitivity': data.get('time_sensitivity', 'flexible'),
+            'preference_type': data.get('preference_type', 'mid-range'),
             'use_serp_for_flights': data.get('use_serp_for_flights', True),
             'use_perplexity_for_ground': data.get('use_perplexity_for_ground', True),
             'origin_airport': data.get('origin_airport'),
