@@ -949,7 +949,7 @@ Raw search results below:
                 }},
                 "tool_queries": {{
                     "travel_query": "Clean travel search for travelers from origin to destination",
-                    "accommodation_query": "Budget hotels and hostels in destination OR Luxury hotels in destination",
+                    "accommodation_query": "cheap hotels and hostels in destination OR Luxury hotels in destination",
                     "itinerary_query": "Plan comprehensive X-day itinerary for destination from origin for X people from dates with budget, including all user preferences like trekking, waterfalls, viewpoints etc."
                 }}
             }}
@@ -1123,6 +1123,24 @@ Raw search results below:
             if all_params.get("error") == "non_travel_query":
                 self.logger.info("🚫 Query identified as non-travel related")
                 return {"error": "non_travel_query"}
+
+            # --- Budget per person logic ---
+            budget = all_params.get('travel_params', {}).get('budget_limit')
+            travelers = all_params.get('travel_params', {}).get('travelers', 1)
+            if budget and travelers:
+                # Check for 'per person' in query or history
+                full_text = query.lower()
+                if conversation_history:
+                    full_text += ' ' + ' '.join([msg.get('content', '').lower() for msg in conversation_history])
+                if 'per person' in full_text or 'each person' in full_text or 'per head' in full_text:
+                    try:
+                        budget = float(budget)
+                        total_budget = budget * travelers
+                        all_params['travel_params']['budget_limit'] = total_budget
+                        all_params['preferences']['budget'] = total_budget
+                        self.logger.info(f"💰 Detected per-person budget: {budget} x {travelers} = {total_budget}")
+                    except Exception as e:
+                        self.logger.warning(f"Could not multiply per-person budget: {e}")
             
             self.logger.info(f"✅ Extracted comprehensive parameters in single call")
             return all_params

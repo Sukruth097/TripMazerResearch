@@ -17,7 +17,7 @@ from src.utils.service_initializer import get_perplexity_service, get_serp_api_s
 from langchain.tools import tool
 
 
-def _extract_flight_details(flight_data: Dict[str, Any]) -> Dict[str, Any]:
+def _extract_flight_details(flight_data: Dict[str, Any], adults: int) -> Dict[str, Any]:
     """
     Extract clean, structured flight details for easy table formatting.
     
@@ -37,6 +37,11 @@ def _extract_flight_details(flight_data: Dict[str, Any]) -> Dict[str, Any]:
             f.get('airplane', 'Unknown')
             for f in flight_data.get('flights', [])
         ])
+        
+        # adults = ','.join([
+        #     f.get('adults', 'Unknown')
+        #     for f in flight_data.get('flights', [])
+        # ])
         
         travel_class = ', '.join([
             f.get('travel_class', 'Unknown')
@@ -70,9 +75,8 @@ def _extract_flight_details(flight_data: Dict[str, Any]) -> Dict[str, Any]:
             or flight_data.get('total_duration')
             or 0
         )
-        
-        # Extract price (per person)
-        price = flight_data.get('price', 0)
+        # adults = flight_data.get('adults',1)
+        price = int(flight_data.get('price', 0)/adults)
         
         # Extract carbon emissions in grams
         # carbon_grams = flight_data.get('carbon_emissions', {}).get('this_flight', 0)
@@ -137,10 +141,19 @@ def _search_flights_with_serp(params: TravelSearchParams) -> Dict[str, Any]:
             adults=params.travelers
         )
         
-        # Extract structured outbound flight details (top 5 options)
-        if isinstance(outbound_results, dict) and 'best_flights' in outbound_results:
-            for flight in outbound_results['best_flights'][:3]:  # Limit to top 3
-                flight_details = _extract_flight_details(flight)
+        # Extract structured outbound flight details (top 3 options)
+        if isinstance(outbound_results, dict):
+            adults = outbound_results.get('search_parameters', {}).get('adults', 1)
+            # print(f"   Outbound Adults: {adults}")
+            flights_list = []
+            if 'best_flights' in outbound_results and outbound_results['best_flights']:
+                flights_list = outbound_results['best_flights']
+            elif 'other_flights' in outbound_results and outbound_results['other_flights']:
+                flights_list = outbound_results['other_flights']
+            elif 'flights' in outbound_results and outbound_results['flights']:
+                flights_list = outbound_results['flights']
+            for flight in flights_list[:3]:  # Limit to top 3
+                flight_details = _extract_flight_details(flight, adults)
                 results['outbound_flights'].append(flight_details)
         
         # Search return flights if needed
@@ -153,11 +166,19 @@ def _search_flights_with_serp(params: TravelSearchParams) -> Dict[str, Any]:
                 currency=params.currency,
                 adults=params.travelers
             )
-            
-            # Extract structured return flight details (top 5 options)
-            if isinstance(return_results, dict) and 'best_flights' in return_results:
-                for flight in return_results['best_flights'][:3]:  # Limit to top 3
-                    flight_details = _extract_flight_details(flight)
+            # Extract structured return flight details (top 3 options)
+            if isinstance(return_results, dict):
+                adults = return_results.get('search_parameters', {}).get('adults', 1)
+                
+                flights_list = []
+                if 'best_flights' in return_results and return_results['best_flights']:
+                    flights_list = return_results['best_flights']
+                elif 'other_flights' in return_results and return_results['other_flights']:
+                    flights_list = return_results['other_flights']
+                elif 'flights' in return_results and return_results['flights']:
+                    flights_list = return_results['flights']
+                for flight in flights_list[:10]:  # Limit to top 3
+                    flight_details = _extract_flight_details(flight, adults)
                     results['return_flights'].append(flight_details)
         
         return results
@@ -584,8 +605,8 @@ def format_travel_results_as_markdown(results: Dict[str, Any]) -> str:
             
             if outbound_flights:
                 output.append(f"**>> Outbound Journey ({origin} → {destination}) - {departure_date}**\n")
-                output.append("| # | Airline | Aircraft/Flight# | Class | Departure | Arrival | Duration | Price | Stops |")
-                output.append("|---|---------|------------------|-------|-----------|---------|----------|-------|-------|")
+                output.append("| # | Airline | Aircraft/Flight# | Class | Departure | Arrival | Duration | Price/Person |")
+                output.append("|---|---------|------------------|-------|-----------|---------|----------|-------|")
                 
                 for idx, flight in enumerate(outbound_flights[:3], 1):
                     airline = flight.get('airline', 'Unknown')[:30]
@@ -608,18 +629,16 @@ def format_travel_results_as_markdown(results: Dict[str, Any]) -> str:
                     duration_min = flight.get('duration_minutes', 0)
                     duration = f"{duration_min//60}h {duration_min%60}m" if duration_min else "N/A"
                     price = flight.get('price_per_person', 0)
-                    stops = flight.get('stops', 0)
-                    stops_str = "Direct" if stops == 0 else f"{stops} stop{'s' if stops > 1 else ''}"
                     
-                    output.append(f"| {idx} | {airline} | {aircraft_info} | {travel_class} | {departure} | {arrival} | {duration} | ₹{price:,.0f} | {stops_str} |")
+                    output.append(f"| {idx} | {airline} | {aircraft_info} | {travel_class} | {departure} | {arrival} | {duration} | ₹{price:,.0f} |")
                 output.append("")
             else:
                 output.append(f"⚠️ No flight options available for outbound journey.\n")
             
             if return_flights and return_date:
                 output.append(f"**<< Return Journey ({destination} → {origin}) - {return_date}**\n")
-                output.append("| # | Airline | Aircraft/Flight# | Class | Departure | Arrival | Duration | Price | Stops |")
-                output.append("|---|---------|------------------|-------|-----------|---------|----------|-------|-------|")
+                output.append("| # | Airline | Aircraft/Flight# | Class | Departure | Arrival | Duration | Price/Person |")
+                output.append("|---|---------|------------------|-------|-----------|---------|----------|-------|")
                 
                 for idx, flight in enumerate(return_flights[:3], 1):
                     airline = flight.get('airline', 'Unknown')[:30]
@@ -642,10 +661,8 @@ def format_travel_results_as_markdown(results: Dict[str, Any]) -> str:
                     duration_min = flight.get('duration_minutes', 0)
                     duration = f"{duration_min//60}h {duration_min%60}m" if duration_min else "N/A"
                     price = flight.get('price_per_person', 0)
-                    stops = flight.get('stops', 0)
-                    stops_str = "Direct" if stops == 0 else f"{stops} stop{'s' if stops > 1 else ''}"
                     
-                    output.append(f"| {idx} | {airline} | {aircraft_info} | {travel_class} | {departure} | {arrival} | {duration} | ₹{price:,.0f} | {stops_str} |")
+                    output.append(f"| {idx} | {airline} | {aircraft_info} | {travel_class} | {departure} | {arrival} | {duration} | ₹{price:,.0f} |")
                 output.append("")
             elif return_date:
                 output.append(f"⚠️ No flight options available for return journey.\n")
@@ -746,71 +763,6 @@ def format_travel_results_as_markdown(results: Dict[str, Any]) -> str:
         
     except Exception as e:
         return f"❌ Error formatting travel results: {str(e)}"
-        output.append(f"⚠️ No bus options available for outbound journey.\n")
-            
-        if ground_transport.get('return_buses') and return_date:
-            output.append(f"**<< Return Journey ({destination} → {origin}) - {return_date}**\n")
-            output.append("| # | Operator | Service | Departure | Arrival | Duration | Price | Platform |")
-            output.append("|---|----------|---------|-----------|---------|----------|-------|----------|")
-            
-            for idx, bus in enumerate(ground_transport['return_buses'][:3], 1):
-                operator = bus.get('operator', 'Unknown')[:20]
-                service = bus.get('service_type', 'N/A')[:15]
-                departure = bus.get('departure_time', 'N/A')
-                arrival = bus.get('arrival_time', 'N/A')
-                duration_min = bus.get('duration_minutes', 0)
-                duration = f"{duration_min//60}h {duration_min%60}m" if duration_min else "N/A"
-                price = bus.get('price_per_person', 0)
-                platform = bus.get('platform', 'N/A')
-                
-                output.append(f"| {idx} | {operator} | {service} | {departure} | {arrival} | {duration} | ₹{price:,.0f} | {platform} |")
-            output.append("")
-        elif return_date:
-            output.append(f"⚠️ No bus options available for return journey.\n")
-        
-        # Train Options  
-        output.append("### 🚂 Train Options\n")
-        if ground_transport.get('outbound_trains'):
-            output.append(f"**>> Outbound Journey ({origin} → {destination}) - {departure_date}**\n")
-            output.append("| # | Train | Class | Departure | Arrival | Duration | Price | Platform |")
-            output.append("|---|-------|-------|-----------|---------|----------|-------|----------|")
-            
-            for idx, train in enumerate(ground_transport['outbound_trains'][:3], 1):
-                operator = train.get('operator', 'Unknown')[:20]
-                service = train.get('service_type', 'N/A')[:10]
-                departure = train.get('departure_time', 'N/A')
-                arrival = train.get('arrival_time', 'N/A')
-                duration_min = train.get('duration_minutes', 0)
-                duration = f"{duration_min//60}h {duration_min%60}m" if duration_min else "N/A"
-                price = train.get('price_per_person', 0)
-                platform = train.get('platform', 'N/A')
-                
-                output.append(f"| {idx} | {operator} | {service} | {departure} | {arrival} | {duration} | ₹{price:,.0f} | {platform} |")
-            output.append("")
-        else:
-            output.append(f"⚠️ No train options available for outbound journey.\n")
-            
-        if ground_transport.get('return_trains') and return_date:
-            output.append(f"**<< Return Journey ({destination} → {origin}) - {return_date}**\n")
-            output.append("| # | Train | Class | Departure | Arrival | Duration | Price | Platform |")
-            output.append("|---|-------|-------|-----------|---------|----------|-------|----------|")
-            
-            for idx, train in enumerate(ground_transport['return_trains'][:3], 1):
-                operator = train.get('operator', 'Unknown')[:20]
-                service = train.get('service_type', 'N/A')[:10]
-                departure = train.get('departure_time', 'N/A')
-                arrival = train.get('arrival_time', 'N/A')
-                duration_min = train.get('duration_minutes', 0)
-                duration = f"{duration_min//60}h {duration_min%60}m" if duration_min else "N/A"
-                price = train.get('price_per_person', 0)
-                platform = train.get('platform', 'N/A')
-                
-                output.append(f"| {idx} | {operator} | {service} | {departure} | {arrival} | {duration} | ₹{price:,.0f} | {platform} |")
-            output.append("")
-        elif return_date:
-            output.append(f"⚠️ No train options available for return journey.\n")
-        
-        return "\n".join(output)
         
     except Exception as e:
         return f"❌ Error formatting travel results: {str(e)}"
@@ -819,167 +771,31 @@ def format_travel_results_as_markdown(results: Dict[str, Any]) -> str:
 if __name__ == "__main__":
     print("Testing Unified Travel Search Tool...")
     
-    try:
-        test_result = travel_search_tool.invoke({
+    test_result = travel_search_tool.invoke({
             "origin": "Mumbai",
             "destination": "Delhi",
             "origin_airport": "BOM",
             "destination_airport": "DEL",
             "departure_date": "2025-12-01",
-            "transport_modes": ["flight", "train", "bus"],
+            "transport_modes": ["flight"],
             "travelers": 2,
             "return_date": "2025-12-05",
-            "budget_limit": 35000,
+            # "budget_limit": 35000,
+            "sort_by": 2,
             "currency": "INR",
             "is_domestic": True
         })
         
-        print("✅ Test successful!")
-        print("\n" + "="*80)
-        print("SEARCH RESULTS (Structured Format)")
-        print("="*80)
-        
-        results = json.loads(test_result)
-
-        # ------------------ FLIGHT RESULTS ------------------
-        if 'flights' in results.get('results', {}):
-            flights = results['results']['flights']
-            print("\n🛫 FLIGHT OPTIONS:")
-            print("-"*80)
-            
-            if flights.get('success'):
-                route_info = flights.get('route_info', {})
-                departure_date = results.get('search_params', {}).get('departure_date', '')
-                return_date = results.get('search_params', {}).get('return_date', '')
-                
-                # Outbound flights (now pre-structured)
-                if flights.get('outbound_flights'):
-                    print(f"\n📤 Outbound Journey: {route_info.get('origin')} → {route_info.get('destination')} ({departure_date})")
-                    print(f"{'#':<4} {'Airline':<20} {'Departure':<12} {'Arrival':<12} {'Duration':<10} {'Price':<12}")
-                    print("-"*80)
-                    
-                    for idx, flight in enumerate(flights['outbound_flights'], 1):
-                        airline = flight.get('airline', 'Unknown')[:19]
-                        departure = flight.get('departure_time', 'N/A')
-                        arrival = flight.get('arrival_time', 'N/A')
-                        duration_min = flight.get('duration_minutes', 0)
-                        duration = f"{duration_min//60}h {duration_min%60}m" if duration_min else "N/A"
-                        price = flight.get('price_per_person', 0)
-                        
-                        print(f"{idx:<4} {airline:<20} {departure:<12} {arrival:<12} {duration:<10} ₹{price:>9,.0f}")
-                
-                # Return flights (now pre-structured)
-                if flights.get('return_flights'):
-                    print(f"\n📥 Return Journey: {route_info.get('destination')} → {route_info.get('origin')} ({return_date})")
-                    print(f"{'#':<4} {'Airline':<20} {'Departure':<12} {'Arrival':<12} {'Duration':<10} {'Price':<12}")
-                    print("-"*80)
-                    
-                    for idx, flight in enumerate(flights['return_flights'], 1):
-                        airline = flight.get('airline', 'Unknown')[:19]
-                        departure = flight.get('departure_time', 'N/A')
-                        arrival = flight.get('arrival_time', 'N/A')
-                        duration_min = flight.get('duration_minutes', 0)
-                        duration = f"{duration_min//60}h {duration_min%60}m" if duration_min else "N/A"
-                        price = flight.get('price_per_person', 0)
-                        
-                        print(f"{idx:<4} {airline:<20} {departure:<12} {arrival:<12} {duration:<10} ₹{price:>9,.0f}")
-            else:
-                print(f"    ❌ Flight search failed: {flights.get('error')}")
-
-        # ------------------ GROUND TRANSPORT RESULTS ------------------
-        if 'ground_transport' in results.get('results', {}):
-            ground = results['results']['ground_transport']
-            
-            if ground.get('success'):
-                route_info = ground.get('route_info', {})
-                departure_date = results.get('search_params', {}).get('departure_date', '')
-                return_date = results.get('search_params', {}).get('return_date', '')
-                
-                # Train results (outbound)
-                if ground.get('outbound_trains'):
-                    print(f"\n\n🚆 TRAIN OPTIONS:")
-                    print("-"*80)
-                    print(f"\n📤 Outbound Journey: {route_info.get('origin')} → {route_info.get('destination')} ({departure_date})")
-                    print(f"{'#':<4} {'Train/Class':<25} {'Departure':<12} {'Arrival':<12} {'Duration':<10} {'Price':<12} {'Platform':<15}")
-                    print("-"*80)
-                    
-                    for idx, train in enumerate(ground['outbound_trains'], 1):
-                        operator = train.get('operator', 'Unknown')[:24]
-                        service = train.get('service_type', 'N/A')
-                        full_name = f"{operator} ({service})" if service != 'N/A' else operator
-                        departure = train.get('departure_time', 'N/A')
-                        arrival = train.get('arrival_time', 'N/A')
-                        duration_min = train.get('duration_minutes', 0)
-                        duration = f"{duration_min//60}h {duration_min%60}m" if duration_min else "N/A"
-                        price = train.get('price_per_person', 0)
-                        platform = train.get('platform', 'N/A')[:14]
-                        
-                        print(f"{idx:<4} {full_name[:25]:<25} {departure:<12} {arrival:<12} {duration:<10} ₹{price:>9,.0f} {platform:<15}")
-                
-                # Train results (return)
-                if ground.get('return_trains'):
-                    print(f"\n📥 Return Journey: {route_info.get('destination')} → {route_info.get('origin')} ({return_date})")
-                    print(f"{'#':<4} {'Train/Class':<25} {'Departure':<12} {'Arrival':<12} {'Duration':<10} {'Price':<12} {'Platform':<15}")
-                    print("-"*80)
-                    
-                    for idx, train in enumerate(ground['return_trains'], 1):
-                        operator = train.get('operator', 'Unknown')[:24]
-                        service = train.get('service_type', 'N/A')
-                        full_name = f"{operator} ({service})" if service != 'N/A' else operator
-                        departure = train.get('departure_time', 'N/A')
-                        arrival = train.get('arrival_time', 'N/A')
-                        duration_min = train.get('duration_minutes', 0)
-                        duration = f"{duration_min//60}h {duration_min%60}m" if duration_min else "N/A"
-                        price = train.get('price_per_person', 0)
-                        platform = train.get('platform', 'N/A')[:14]
-                        
-                        print(f"{idx:<4} {full_name[:25]:<25} {departure:<12} {arrival:<12} {duration:<10} ₹{price:>9,.0f} {platform:<15}")
-                
-                # Bus results (outbound)
-                if ground.get('outbound_buses'):
-                    print(f"\n\n🚌 BUS OPTIONS:")
-                    print("-"*80)
-                    print(f"\n📤 Outbound Journey: {route_info.get('origin')} → {route_info.get('destination')} ({departure_date})")
-                    print(f"{'#':<4} {'Operator/Type':<25} {'Departure':<12} {'Arrival':<12} {'Duration':<10} {'Price':<12} {'Platform':<15}")
-                    print("-"*80)
-                    
-                    for idx, bus in enumerate(ground['outbound_buses'], 1):
-                        operator = bus.get('operator', 'Unknown')[:24]
-                        service = bus.get('service_type', 'N/A')
-                        full_name = f"{operator} ({service})" if service != 'N/A' else operator
-                        departure = bus.get('departure_time', 'N/A')
-                        arrival = bus.get('arrival_time', 'N/A')
-                        duration_min = bus.get('duration_minutes', 0)
-                        duration = f"{duration_min//60}h {duration_min%60}m" if duration_min else "N/A"
-                        price = bus.get('price_per_person', 0)
-                        platform = bus.get('platform', 'N/A')[:14]
-                        
-                        print(f"{idx:<4} {full_name[:25]:<25} {departure:<12} {arrival:<12} {duration:<10} ₹{price:>9,.0f} {platform:<15}")
-                
-                # Bus results (return)
-                if ground.get('return_buses'):
-                    print(f"\n📥 Return Journey: {route_info.get('destination')} → {route_info.get('origin')} ({return_date})")
-                    print(f"{'#':<4} {'Operator/Type':<25} {'Departure':<12} {'Arrival':<12} {'Duration':<10} {'Price':<12} {'Platform':<15}")
-                    print("-"*80)
-                    
-                    for idx, bus in enumerate(ground['return_buses'], 1):
-                        operator = bus.get('operator', 'Unknown')[:24]
-                        service = bus.get('service_type', 'N/A')
-                        full_name = f"{operator} ({service})" if service != 'N/A' else operator
-                        departure = bus.get('departure_time', 'N/A')
-                        arrival = bus.get('arrival_time', 'N/A')
-                        duration_min = bus.get('duration_minutes', 0)
-                        duration = f"{duration_min//60}h {duration_min%60}m" if duration_min else "N/A"
-                        price = bus.get('price_per_person', 0)
-                        platform = bus.get('platform', 'N/A')[:14]
-                        
-                        print(f"{idx:<4} {full_name[:25]:<25} {departure:<12} {arrival:<12} {duration:<10} ₹{price:>9,.0f} {platform:<15}")
-            else:
-                print(f"\n\n    ❌ Ground transport search failed: {ground.get('error')}")
-        
-        # print("\n" + "="*80)
-        # print(f"Search completed using: {', '.join(results.get('summary', {}).get('providers_used', []))}")
-        # print("="*80)
+    print("✅ Test successful!")
+    print("\n" + "="*80)
+    print("SEARCH RESULTS (Structured Format)")
+    print("="*80)
     
-    except Exception as e:
-        print(f"❌ Test failed: {e}")
+    results = json.loads(test_result)
+
+    print("\n" + "="*80)
+    print("SEARCH RESULTS (Markdown Format)")
+    print("="*80)
+    print(format_travel_results_as_markdown(results))
+
+       

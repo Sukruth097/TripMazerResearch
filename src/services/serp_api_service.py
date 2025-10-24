@@ -97,6 +97,7 @@ class SerpAPIService:
             "hl": language if language is not None else "en",  # Default to English
             "gl": country_code,  # 'in' for Indian flights, 'us' for International flights
             "currency": currency,
+            "sort_by": 2
         }
         
         # Add optional parameters if provided
@@ -137,6 +138,11 @@ class SerpAPIService:
         
         search = GoogleSearch(params)
         results = search.get_dict()
+        # print("\n🌐 DEBUG - SERP API FLIGHT SEARCH:")
+        # print(f"   Params: {params}")
+        # print(f"   Results: {results}")
+        # if 'error' in results:
+        #     print(f"   SERP API ERROR: {results['error']}")
         return results
     
     def search_location_images(self, location: str, image_type: str = "photo", 
@@ -258,7 +264,7 @@ class SerpAPIService:
 # Example usage
 if __name__ == "__main__":
     # Initialize with API key (can be provided directly or loaded from environment)
-    API_KEY = "8fd53e75d1e2453e52aa981eee93384c3ddbc6b87c4e43404c5f1ff5e990032a"
+    API_KEY = "eaa4969cb04c9844cd8700553f7cd5ce55f09c2ca32eda56a7e3b5dc776be386"
     serp_service = SerpAPIService(api_key=API_KEY)
     
     # Test location images search
@@ -285,125 +291,125 @@ if __name__ == "__main__":
     #     print(f"Basic flight search error: {e}")
     
     # Test flight search with advanced parameters
-    # print("\nTesting advanced flight search:")
-    # try:
-    #     advanced_flights = serp_service.search_flights(
-    #         departure_id="BLR",  # Goa
-    #         arrival_id="HYD",    # Mumbai
-    #         outbound_date="2025-10-30",
-    #         country_code="in",   # India (mandatory)
-    #         currency="INR",      # Currency (mandatory)
-    #         language="en",       # Optional, defaults to 'en'
-    #         type="2",            # One way
-    #         # travel_class="1",    # Economy
-    #         adults=1,            # 1 adult
-    #         # sort_by="2",         # Sort by price     # Force fresh results
-    #         no_cache="true"      # Force fresh results  
-    #     )
-    #     print(advanced_flights.keys())
-    #     # Check for flight results in different possible keys
-    #     flight_results = []
-    #     result_source = ""
+    print("\nTesting advanced flight search:")
+    try:
+        advanced_flights = serp_service.search_flights(
+            departure_id="BLR",  # Goa
+            arrival_id="HYD",    # Mumbai
+            outbound_date="2025-10-30",
+            country_code="in",   # India (mandatory)
+            currency="INR",      # Currency (mandatory)
+            language="en",       # Optional, defaults to 'en'
+            type="2",            # One way
+            # travel_class="1",    # Economy
+            adults=1,            # 1 adult
+            # sort_by="2",         # Sort by price     # Force fresh results
+            no_cache="true"      # Force fresh results  
+        )
+        print(advanced_flights.keys())
+        # Check for flight results in different possible keys
+        flight_results = []
+        result_source = ""
         
-    #     if 'best_flights' in advanced_flights and advanced_flights['best_flights']:
-    #         flight_results = advanced_flights['best_flights']
-    #         result_source = "best_flights"
-    #     elif 'other_flights' in advanced_flights and advanced_flights['other_flights']:
-    #         flight_results = advanced_flights['other_flights']
-    #         result_source = "other_flights"
-    #     elif 'flights' in advanced_flights and advanced_flights['flights']:
-    #         flight_results = advanced_flights['flights']
-    #         result_source = "flights"
+        if 'best_flights' in advanced_flights and advanced_flights['best_flights']:
+            flight_results = advanced_flights['best_flights']
+            result_source = "best_flights"
+        elif 'other_flights' in advanced_flights and advanced_flights['other_flights']:
+            flight_results = advanced_flights['other_flights']
+            result_source = "other_flights"
+        elif 'flights' in advanced_flights and advanced_flights['flights']:
+            flight_results = advanced_flights['flights']
+            result_source = "flights"
         
-    #     print(f"Advanced flight search completed.")
-    #     print(f"Found {len(flight_results)} results in '{result_source}'")
+        print(f"Advanced flight search completed.")
+        print(f"Found {len(flight_results)} results in '{result_source}'")
         
-    #     # Display first 3 results with key information
-    #     if flight_results:
-    #         print(f"\nFirst 3 flight options:")
-    #         for i, flight in enumerate(flight_results[:3]):
-    #             if 'flights' in flight and len(flight['flights']) > 0:
-    #                 main_flight = flight['flights'][0]
-    #                 departure_time = main_flight['departure_airport']['time']
-    #                 arrival_time = main_flight['arrival_airport']['time']
-    #                 airline = main_flight['airline']
-    #                 flight_num = main_flight['flight_number']
-    #                 duration = flight['total_duration']
-    #                 price = flight['price']
+        # Display first 3 results with key information
+        if flight_results:
+            print(f"\nFirst 3 flight options:")
+            for i, flight in enumerate(flight_results[:10]):
+                if 'flights' in flight and len(flight['flights']) > 0:
+                    main_flight = flight['flights'][0]
+                    departure_time = main_flight['departure_airport']['time']
+                    arrival_time = main_flight['arrival_airport']['time']
+                    airline = main_flight['airline']
+                    flight_num = main_flight['flight_number']
+                    duration = flight['total_duration']
+                    price = flight['price']
                     
-    #                 print(f"{i+1}. {airline} {flight_num}")
-    #                 print(f"   {departure_time} → {arrival_time} ({duration} min)")
-    #                 print(f"   Price: ₹{price}")
-    #     else:
-    #         print("No flight results found")
-    #         print(f"Available response keys: {list(advanced_flights.keys())}")
+                    print(f"{i+1}. {airline} {flight_num}")
+                    print(f"   {departure_time} → {arrival_time} ({duration} min)")
+                    print(f"   Price: ₹{price}")
+        else:
+            print("No flight results found")
+            print(f"Available response keys: {list(advanced_flights.keys())}")
             
-    # except Exception as e:
-    #     print(f"Advanced flight search error: {e}")
+    except Exception as e:
+        print(f"Advanced flight search error: {e}")
 
     # Test hotel search
-    print("\nTesting hotel search:")
-    try:
-        hotel_results = serp_service.search_hotels(
-            query="Budget hotels in Mumbai",
-            check_in_date="2025-11-19",
-            check_out_date="2025-11-22",
-            currency="INR",
-            country_code="in",  # Mandatory
-            adults=1,           # Optional, defaults to 2
-            language="en",      # Optional, defaults to 'en'
-            rating="8",
-            sort_by="3",
-            no_cache="true"      # Optional, defaults to "true"
-        )
+    # print("\nTesting hotel search:")
+    # try:
+    #     hotel_results = serp_service.search_hotels(
+    #         query="Budget hotels in Mumbai",
+    #         check_in_date="2025-11-19",
+    #         check_out_date="2025-11-22",
+    #         currency="INR",
+    #         country_code="in",  # Mandatory
+    #         adults=1,           # Optional, defaults to 2
+    #         language="en",      # Optional, defaults to 'en'
+    #         rating="8",
+    #         sort_by="3",
+    #         no_cache="true"      # Optional, defaults to "true"
+    #     )
         
-        print("="*80)
-        print("HOTEL SEARCH RESULTS")
-        print("="*80)
+    #     print("="*80)
+    #     print("HOTEL SEARCH RESULTS")
+    #     print("="*80)
         
-        # Check if there's an error first
-        if 'error' in hotel_results:
-            print(f"\nERROR: {hotel_results['error']}")
-        else:
-            # Check what keys are actually in the results
-            print(f"\nAvailable keys in results: {list(hotel_results.keys())}")
+    #     # Check if there's an error first
+    #     if 'error' in hotel_results:
+    #         print(f"\nERROR: {hotel_results['error']}")
+    #     else:
+    #         # Check what keys are actually in the results
+    #         print(f"\nAvailable keys in results: {list(hotel_results.keys())}")
             
-            # Extract properties (hotels)
-            if 'properties' in hotel_results and hotel_results['properties']:
-                properties = hotel_results['properties']  # Get top 5
-                print(f"\nFOUND {len(hotel_results['properties'])} HOTELS")
-                print(f"\nTOP 5 HOTELS:")
+    #         # Extract properties (hotels)
+    #         if 'properties' in hotel_results and hotel_results['properties']:
+    #             properties = hotel_results['properties']  # Get top 5
+    #             print(f"\nFOUND {len(hotel_results['properties'])} HOTELS")
+    #             print(f"\nTOP 5 HOTELS:")
                 
-                for i, hotel in enumerate(properties, 1):
-                    name = hotel.get('name', 'No name')
-                    price = hotel.get('total_rate', {}).get('lowest', 'N/A')
-                    rating = hotel.get('overall_rating', 'N/A')
-                    reviews = hotel.get('reviews', 0)
-                    hotel_class = hotel.get('hotel_class', 'N/A')
-                    link = hotel.get('link', 'No link')
+    #             for i, hotel in enumerate(properties, 1):
+    #                 name = hotel.get('name', 'No name')
+    #                 price = hotel.get('total_rate', {}).get('lowest', 'N/A')
+    #                 rating = hotel.get('overall_rating', 'N/A')
+    #                 reviews = hotel.get('reviews', 0)
+    #                 hotel_class = hotel.get('hotel_class', 'N/A')
+    #                 link = hotel.get('link', 'No link')
                     
-                    print(f"\n{i}. {name}")
-                    print(f"   Price: ₹{price}")
-                    print(f"   Rating: {rating} ({reviews} reviews)")
-                    print(f"   Class: {hotel_class} star")
-                    print(f"   Link: {link}")
+    #                 print(f"\n{i}. {name}")
+    #                 print(f"   Price: ₹{price}")
+    #                 print(f"   Rating: {rating} ({reviews} reviews)")
+    #                 print(f"   Class: {hotel_class} star")
+    #                 print(f"   Link: {link}")
                     
-                    # Show amenities if available
-                    if 'amenities' in hotel:
-                        amenities = hotel['amenities'][:5]  # First 5 amenities
-                        print(f"   Amenities: {', '.join(amenities)}")
-            else:
-                print("\nNo properties found in results")
+    #                 # Show amenities if available
+    #                 if 'amenities' in hotel:
+    #                     amenities = hotel['amenities'][:5]  # First 5 amenities
+    #                     print(f"   Amenities: {', '.join(amenities)}")
+    #         else:
+    #             print("\nNo properties found in results")
                 
-            # Check for search metadata
-            if 'search_metadata' in hotel_results:
-                metadata = hotel_results['search_metadata']
-                print(f"\nSearch completed in: {metadata.get('total_time_taken', 'N/A')}s")
+    #         # Check for search metadata
+    #         if 'search_metadata' in hotel_results:
+    #             metadata = hotel_results['search_metadata']
+    #             print(f"\nSearch completed in: {metadata.get('total_time_taken', 'N/A')}s")
         
-        print("\n" + "="*80)
-        print("END OF HOTEL SEARCH")
-        print("="*80)
+    #     print("\n" + "="*80)
+    #     print("END OF HOTEL SEARCH")
+    #     print("="*80)
                 
-    except Exception as e:
-        print(f"Hotel search error: {e}")
-        print(f"Error details: {traceback.format_exc()}")
+    # except Exception as e:
+    #     print(f"Hotel search error: {e}")
+    #     print(f"Error details: {traceback.format_exc()}")
