@@ -110,12 +110,22 @@ def select_luxury_hotels(hotels_with_prices, hotels_without_prices, budget_per_n
     mid_range_hotels.sort(key=lambda x: x[2], reverse=True)
     luxury_hotels.sort(key=lambda x: x[2], reverse=True)
     
-    # Selection: prioritize luxury hotels (4), add mid-range for comparison
-    selected = [h[0] for h in luxury_hotels[:4]]
+    print(f"🏨 Hotel categorization: {len(luxury_hotels)} luxury (≥₹{high_threshold:.0f}), {len(mid_range_hotels)} mid-range (₹{low_threshold:.0f}-₹{high_threshold:.0f}), {len(budget_hotels)} budget (≤₹{low_threshold:.0f})")
+    
+    # Selection: For luxury preference, prioritize highest-priced options regardless of threshold
+    selected = [h[0] for h in luxury_hotels[:3]]  # Top 3 true luxury (if any)
+    
+    # If few luxury hotels, add highest-priced mid-range with top ratings
     if len(selected) < 5:
-        selected.extend([h[0] for h in mid_range_hotels[:5-len(selected)]])
+        # Sort mid-range by price descending for luxury preference (want most expensive)
+        mid_range_luxury_sorted = sorted(mid_range_hotels, key=lambda x: (x[1], x[2]), reverse=True)
+        selected.extend([h[0] for h in mid_range_luxury_sorted[:5-len(selected)]])
+    
+    # Only add budget as absolute last resort and only highest-rated ones
     if len(selected) < 5:
         selected.extend([h[0] for h in budget_hotels[:5-len(selected)]])
+    
+    print(f"✅ Luxury-focused selection: {len(selected)} hotels chosen")
     
     # Fill with non-priced hotels if still needed
     if len(selected) < 5:
@@ -149,7 +159,7 @@ def select_midrange_hotels(hotels_with_prices, hotels_without_prices, budget_per
                 mid_range_hotels.append((hotel, price_val, rating_val))
     
     # Calculate max price for balanced scoring
-    all_prices = [h[1] for h in hotels_with_prices if get_hotel_price(h) is not None]
+    all_prices = [get_hotel_price(h) for h in hotels_with_prices if get_hotel_price(h) is not None]
     max_price = max(all_prices) if all_prices else 1
     
     # Mid-range strategy: balanced approach
@@ -370,6 +380,23 @@ def search_accommodations(location: str, check_in_date: str, check_out_date: str
         # Build markdown table (always use INR symbol)
         currency_symbol = "₹"  # Always use INR
         
+        # Sort final results by price (lowest to highest)
+        properties_with_prices = []
+        properties_without_prices = []
+        
+        for hotel in properties:
+            price = get_hotel_price(hotel)
+            if price is not None:
+                properties_with_prices.append((hotel, price))
+            else:
+                properties_without_prices.append(hotel)
+        
+        # Sort hotels with prices by price ascending (lowest first)
+        properties_with_prices.sort(key=lambda x: x[1])
+        
+        # Combine: sorted hotels with prices first, then hotels without prices
+        sorted_properties = [hotel[0] for hotel in properties_with_prices] + properties_without_prices
+        
         output = f"## 🏨 Top 5 Hotel Recommendations\n\n"
         output += f"**Search Query:** {search_query}\n"
         output += f"**Preference:** {preference_type.title()}"
@@ -384,8 +411,8 @@ def search_accommodations(location: str, check_in_date: str, check_out_date: str
         output += "| # | Hotel Name | Rating | Price/Night | Check-in | Check-out | Amenities | Nearby Places |\n"
         output += "|---|------------|--------|-------------|----------|-----------|-----------|---------------|\n"
         
-        # Add hotel rows (exactly 5)
-        for i, hotel in enumerate(properties, 1):
+        # Add hotel rows (exactly 5) - now sorted by price
+        for i, hotel in enumerate(sorted_properties, 1):
             # Extract hotel data inline
             name = hotel.get('name', 'N/A').replace('|', '-')
             rating = hotel.get('overall_rating', 'N/A')
