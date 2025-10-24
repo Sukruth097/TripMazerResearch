@@ -263,8 +263,11 @@ def get_airport_code(city_name: str) -> str:
     try:
         from src.utils.service_initializer import get_gemini_client
         
+        print(f"🔧 DEBUG: Attempting to get airport code for '{city_name}'")
+        
         # Get Gemini client
         client = get_gemini_client()
+        print(f"🔧 DEBUG: Gemini client obtained successfully")
         
         prompt = f"""Return ONLY the 3-letter IATA airport code for: {city_name}
 
@@ -286,18 +289,22 @@ Bangalore -> BLR"""
             contents=prompt
         )
         
+        print(f"🔧 DEBUG: Gemini response: '{response.text}'")
+        
         airport_code = response.text.strip().upper()
         
         # Validate the response (should be 3 letters)
         if len(airport_code) == 3 and airport_code.isalpha():
+            print(f"🔧 DEBUG: Valid airport code '{airport_code}' for '{city_name}'")
             return airport_code
         else:
             # If invalid response, return original city name
+            print(f"🔧 DEBUG: Invalid response '{airport_code}', returning city name '{city_name}'")
             return city_name
             
     except Exception as e:
         # Fallback to city name if Gemini fails
-        print(f"Airport code lookup failed for {city_name}: {e}")
+        print(f"🔧 DEBUG: Airport code lookup failed for {city_name}: {e}")
         return city_name
 
 
@@ -366,9 +373,18 @@ def travel_section():
                         dest_airport = get_airport_code(destination_travel)
                     else:
                         transport_modes_to_use = transport_modes
-                        # For domestic routes, city names are usually fine
-                        origin_airport = None
-                        dest_airport = None
+                        # For domestic routes with flights, we need airport codes too
+                        if "flight" in transport_modes:
+                            print(f"🔍 Getting airport code for {origin}...")
+                            origin_airport = get_airport_code(origin)
+                            print(f"✈️ {origin} → {origin_airport}")
+                            
+                            print(f"🔍 Getting airport code for {destination_travel}...")
+                            dest_airport = get_airport_code(destination_travel)
+                            print(f"✈️ {destination_travel} → {dest_airport}")
+                        else:
+                            origin_airport = None
+                            dest_airport = None
                     
                     # Prepare travel search parameters
                     search_params = {

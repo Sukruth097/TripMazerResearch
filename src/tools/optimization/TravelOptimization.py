@@ -786,10 +786,6 @@ if __name__ == "__main__":
             "is_domestic": True
         })
         
-    print("✅ Test successful!")
-    print("\n" + "="*80)
-    print("SEARCH RESULTS (Structured Format)")
-    print("="*80)
     
     results = json.loads(test_result)
 
