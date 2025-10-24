@@ -64,7 +64,7 @@ def _extract_flight_details(flight_data: Dict[str, Any], adults: int) -> Dict[st
                 # Include full airport name along with code and duration
                 airport_name = layover.get('name', 'Unknown Airport')
                 airport_code = layover.get('id', 'N/A')
-                layover_details.append(f"{airport_name} ({airport_code}) | Duration: {duration_str}")
+                layover_details.append(f"{airport_name} ({airport_code}) - Duration: {duration_str}")
             layover_info = ", ".join(layover_details)
         else:
             layover_info = "Direct"
