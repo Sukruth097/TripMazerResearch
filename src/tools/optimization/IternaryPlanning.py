@@ -8,6 +8,10 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Add parent directories to path for proper importing
+if __name__ == "__main__":
+    sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
+
+# Add parent directories to path for proper importing
 current_dir = os.path.dirname(os.path.abspath(__file__))
 src_dir = os.path.join(current_dir, '..', '..')
 sys.path.insert(0, src_dir)
@@ -38,16 +42,6 @@ def plan_itinerary(query: str) -> str:
         
         # Itinerary Planning Results
         
-        ## Extracted Requirements
-        - **From:** Delhi
-        - **Destination:** Tokyo
-        - **Travel Type:** Couple
-        - **Budget:** $1500 USD
-        - **Dates:** 25-12-2025 to 28-12-2025
-        - **Preferred Activities:** temples, shopping, nightlife
-        
-        ---
-        
         ## Day 1 - December 25, 2025
         
         | Time | Activity | Details | Maps |
@@ -64,13 +58,12 @@ def plan_itinerary(query: str) -> str:
         | 2:00 PM | Ginza Shopping | High-end shopping district | [Ginza](https://maps.google.com/search/Ginza+Tokyo) |
         
         ## Budget Breakdown
-        ## Budget Breakdown
-- **Total Budget:** [Currency][Amount] [Currency Code]
-        - **Per Day:** ~$500 USD
-        - **Activities:** $200 per day
-        - **Food:** $150 per day  
-        - **Transportation:** $50 per day
-        - **Shopping:** $100 per day
+        - **Total Budget:** ₹125000 INR
+        - **Per Day:** ~₹42000 INR
+        - **Activities:** ₹17000 per day
+        - **Food:** ₹12000 per day  
+        - **Transportation:** ₹4000 per day
+        - **Shopping:** ₹9000 per day
         
         ## Travel Tips
         - Book temple visits early during peak season
@@ -84,8 +77,8 @@ def plan_itinerary(query: str) -> str:
         # Create comprehensive system prompt that extracts AND plans itinerary
         system_prompt = """You are an expert travel itinerary planner and local guide with deep knowledge of specific locations, distances, and practical travel advice.
 
-**STEP 1: Extract itinerary requirements from the user query**
-First, identify and extract these parameters from the user's natural language query:
+**STEP 1: Extract itinerary requirements from the user query (INTERNAL - DO NOT SHOW IN OUTPUT)**
+First, identify and extract these parameters from the user's natural language query (FOR YOUR UNDERSTANDING ONLY, DO NOT PRINT THIS):
 - From Location: Origin/departure location
 - Destination: Where they want to travel
 - Travel Type: solo/group/couple (if mentioned)
@@ -152,29 +145,20 @@ First, identify and extract these parameters from the user's natural language qu
 
 # Itinerary Planning Results
 
-## Extracted Requirements
-- **From:** [extracted from location]
-- **Destination:** [extracted destination]
-- **Travel Type:** [solo/group/couple or "Not specified"]
-- **Budget:** [Currency][Amount] [Currency Code]
-- **Dates:** [extracted dates]
-- **Preferred Activities:** [list extracted activities or "None specified"]
-- **Dietary Preferences:** [veg only/non-veg/vegan/veg and non-veg/halal/kosher/gluten-free or "No specific preferences"]
-
----
+**IMPORTANT: Start DIRECTLY with Day 1. Do NOT include any "Extracted Requirements" or summary section.**
 
 ## Day 1 - [Date]
 
 | Time | Activity | Local Recommendations & Tips | Distance/Transport | Weather | Maps |
 |------|----------|------------------------------|-------------------|---------|------|
-| [Time] | [Activity Name] | **What to do specifically:** • [First specific tip with prices] • [Second specific tip] • [Third specific tip] **Why for [travel type]:** • [First reason] • [Second reason] | **From previous:** [X]km, [Y] mins by [transport] | **Best time:** [Morning/Afternoon/Evening] **Conditions:** [Weather considerations] | • [[Place 1](https://www.google.com/maps/search/Place1+Name+Street+Area+City+State+Country)] • [[Place 2](https://www.google.com/maps/search/Place2+Name+Street+Area+City+State+Country)]• [Place 3].... |
+| [Time] | [Activity Name] | **What to do specifically:**<br>• [Very detailed first tip with specific prices, timings, contact info, and insider knowledge]<br>• [Very detailed second tip with practical information, alternatives, and local secrets]<br>• [Additional detailed tips as needed - not mandatory to have exactly 3, can be 2-4 based on activity complexity] | **From previous:** [X]km, [Y] mins by [transport] | **Best time:** [Morning/Afternoon/Evening]<br>**Conditions:** [Weather considerations] | [[Activity Name](https://www.google.com/maps/search/Activity+Name+City+Country)] |
 
 
 ## Day 2 - [Date]
 
 | Time | Activity | Local Recommendations & Tips | Distance/Transport | Weather | Maps |
 |------|----------|------------------------------|-------------------|---------|------|
-| [Time] | [Activity Name] | **What to do specifically:** • [Detailed local guide recommendations in bullet points] **Why for [travel type]:** • [Reasons in bullet points] | **From previous:** [X]km, [Y] mins by [transport] | **Best time:** [Time recommendation] **Conditions:** [Weather advice] | [[Activity Name](https://www.google.com/maps/search/Activity+Name+City+Country)] |
+| [Time] | [Activity Name] | **What to do specifically:**<br>• [Comprehensive first recommendation with all necessary details]<br>• [Comprehensive second recommendation with practical insights]<br>• [Add more recommendations only if the activity warrants detailed guidance] | **From previous:** [X]km, [Y] mins by [transport] | **Best time:** [Time recommendation]<br>**Conditions:** [Weather advice] | [[Activity Name](https://www.google.com/maps/search/Activity+Name+City+Country)] |
 
 
 ## Budget Breakdown
@@ -195,22 +179,22 @@ First, identify and extract these parameters from the user's natural language qu
 **EXAMPLE OF GOOD LOCAL RECOMMENDATIONS AND MAPS:**
 ❌ BAD: "Explore Old Delhi markets with links: [Chandni Chowk](map_link)"
 ✅ GOOD: 
-**Local Recommendations column:**
-**What to do specifically:** • Start at Chandni Chowk metro, walk to Paranthe Wali Gali (try Pandit Gaya Prasad's parathas, INR 80-120) • Then Karim's for kebabs (INR 200-300) • Finish with jalebi at Old Famous Jalebi Wala (INR 50-100) **Why for couple:** • Iconic, bustling, and safe in daylight • Perfect for food lovers to share dishes • Great photo opportunities together
+**What to do specifically:**<br>• Start at Chandni Chowk metro (₹10 entry), walk 5 mins to Paranthe Wali Gali - try Pandit Gaya Prasad's parathas (₹80-120 each, 6 varieties available, open 7 AM-11 PM, cash only). Best parathas: Aloo, Gobhi, Paneer<br>• Visit Karim's for authentic Mughlai kebabs (₹200-300 per plate, established 1913, try Mutton Burra and Chicken Jehangiri, open 11 AM-11 PM, accepts cards). Get there early to avoid 30-min wait times
 
-**Maps column (separate):**
-• [Paranthe Wali Gali](https://www.google.com/maps/search/Paranthe+Wali+Gali+Chandni+Chowk+Old+Delhi+Delhi+India) • [Karim's](https://www.google.com/maps/search/Karims+Restaurant+Gali+Kababian+Jama+Masjid+Old+Delhi+Delhi+India) • [Old Famous Jalebi Wala](https://www.google.com/maps/search/Old+Famous+Jalebi+Wala+Dariba+Corner+Chandni+Chowk+Old+Delhi+Delhi+India)
+**EXAMPLE OF SIMPLE ACTIVITY (2 recommendations):**
+✅ **Temple Visit:**
+**What to do specifically:**<br>• Entry free, remove shoes at entrance, photography allowed in courtyard only (₹20 for camera inside). Best time: 6-8 AM for morning prayers and fewer crowds<br>• Local prasad shop outside sells coconut, flowers (₹50 combo), and temple guides available (₹100-200 for 30-min tour in Hindi/English)
 
-**EXAMPLE OF NIGHTLIFE RECOMMENDATIONS:**
-✅ **Evening/Nightlife Activity:**
-**What to do specifically:** • Start at Social (Hauz Khas Village) for craft cocktails (INR 400-600 per drink) • Move to Imperfecto for live music and rooftop views (entry INR 1500 couple) • End at PCO for late-night dancing (open till 3 AM, entry INR 2000 couple) **Why for couple:** • Trendy nightlife district perfect for couples • Great ambiance for romantic evening • Safe area with easy transport options
+**EXAMPLE OF COMPLEX ACTIVITY (4 recommendations):**
+✅ **Trekking Activity:**
+**What to do specifically:**<br>• Start early at 6 AM from base camp (₹50 parking), carry 2L water per person, trek takes 2-3 hours, difficulty: moderate. Rental shoes available (₹100/day) at Sharma Trekking Shop near parking<br>• Hire local guide Ravi (+91-98765-43210, ₹500/group, knows secret photo spots), he provides walking sticks and basic first aid. Speaks English, Hindi, local dialect<br>• Pack light snacks from village shop (₹200 for trail mix, bananas, energy bars), no food available on trek. Mobile network available only at start and peak<br>• Weather changes quickly - carry light rain jacket (available for rent ₹100/day), wear layers, avoid monsoon season (July-Sept). Best months: Oct-March
 
 **EXAMPLE OF GOOD DISTANCE INFO:**
 ✅ "Red Fort → Jama Masjid: 1.2km, 15 mins walk or 5 mins by rickshaw (INR 30-50)"
 ✅ "Jama Masjid → Chandni Chowk: 0.8km, 10 mins walk through market lanes"
 
 **EXAMPLE OF WEATHER COLUMN:**
-✅ **Best time:** Morning (8-11 AM) **Conditions:** Cool breeze, avoid afternoon heat
+✅ **Best time:** Morning (8-11 AM)<br>**Conditions:** Cool breeze, avoid afternoon heat
 ✅ **Best time:** Evening (5-8 PM) **Conditions:** Pleasant weather, good lighting for photos
 
 **IMPORTANT:** 
@@ -243,10 +227,10 @@ First, identify and extract these parameters from the user's natural language qu
 if __name__ == "__main__":
     # Test queries with different scenarios
     
-    # Test 1: International travel with preferences (should use USD)
+    # Test 1: International travel with preferences (should use INR)
     test_query_international = """
     Plan a 4-day itinerary for Tokyo from Delhi for a couple 
-    from 25-12-2025 to 29-12-2025 with budget $2000. 
+    from 25-12-2025 to 29-12-2025 with budget ₹165000. 
     We prefer temples, shopping, nightlife, and traditional experiences.
     """
     
@@ -260,7 +244,7 @@ if __name__ == "__main__":
     print("Testing Itinerary Planner with Currency Detection...")
     
     # Test international query
-    print(f"\nTEST 1 - International Travel (Should use USD):")
+    print(f"\nTEST 1 - International Travel (Should use INR):")
     print(f"Query: {test_query_international.strip()}")
     print("\n" + "="*70)
     print("ITINERARY RESULTS:")

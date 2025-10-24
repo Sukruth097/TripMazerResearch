@@ -7,9 +7,9 @@ This module contains all the trip planning and optimization tools:
 - RestaurantsSearch: Find restaurants based on itinerary locations
 - TravelOptimization: Optimize transportation routes and modes
 
-All tools use LLM-based extraction and Perplexity AI for search capabilities.
-They support currency detection (INR for Indian regions, USD for international)
-and provide comprehensive markdown outputs with Google Maps integration.
+All tools use LLM-based extraction and SERP/Perplexity AI for search capabilities.
+All prices are displayed in INR (Indian Rupees) regardless of destination.
+They provide comprehensive markdown outputs with Google Maps integration.
 """
 
 # Import all optimization tools

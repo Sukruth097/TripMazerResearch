@@ -148,7 +148,7 @@ async def health_check():
         "environment": os.getenv("ENVIRONMENT", "development")
     })
 
-# Main trip planning endpoint
+# Main trip planning endpoint (Blocking)
 @app.post("/optimized_trip_planner")
 async def plan_optimized_trip(request: dict):
     """
@@ -189,6 +189,75 @@ async def plan_optimized_trip(request: dict):
             status_code=500,
             detail=create_error_response(error_msg)
         )
+
+
+# Streaming trip planning endpoint (NEW)
+@app.post("/optimized_trip_planner/stream")
+async def plan_optimized_trip_stream(request: dict):
+    """
+    Stream trip planning results progressively as each step completes.
+    
+    This endpoint streams results using Server-Sent Events (SSE), allowing
+    the frontend to display results immediately as they become available:
+    - Preferences extracted
+    - Budget allocated  
+    - Each tool result (itinerary, travel, accommodation)
+    - Final combined result
+    
+    Args:
+        request: TripPlanRequest containing the natural language query
+        
+    Returns:
+        StreamingResponse with SSE events
+    """
+    from fastapi.responses import StreamingResponse
+    
+    logger.info(f"Streaming trip planning requested: {request.get('query', '')[:100]}...")
+    
+    try:
+        # Validate request
+        if not request.get('query'):
+            raise HTTPException(status_code=422, detail="Query field is required")
+        
+        async def event_generator():
+            """Generate SSE events as trip planning progresses."""
+            try:
+                # Create agent instance
+                agent = TripOptimizationAgent()
+                
+                # Stream results from agent
+                for result in agent.plan_trip_stream(request['query']):
+                    # Format as SSE event
+                    event_data = json.dumps(result)
+                    yield f"data: {event_data}\n\n"
+                    
+            except Exception as e:
+                # Send error event
+                error_event = {
+                    "status": "error",
+                    "message": f"❌ Error: {str(e)}",
+                    "error": str(e)
+                }
+                yield f"data: {json.dumps(error_event)}\n\n"
+        
+        return StreamingResponse(
+            event_generator(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no"  # Disable buffering for nginx
+            }
+        )
+        
+    except Exception as e:
+        error_msg = f"Error in streaming trip planning: {str(e)}"
+        logger.error(error_msg, exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=create_error_response(error_msg)
+        )
+
 
 # Individual tool endpoints
 @app.post("/tools/accommodation")

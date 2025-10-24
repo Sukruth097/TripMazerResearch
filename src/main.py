@@ -27,6 +27,229 @@ except ImportError as e:
     st.info("Please ensure all required modules are properly installed and environment variables are set.")
     AGENT_AVAILABLE = False
 
+
+def get_airport_code(city_name: str) -> str:
+    """Use Gemini to get IATA airport code for any city worldwide."""
+    try:
+        from src.utils.service_initializer import get_gemini_client
+        
+        # Get Gemini client
+        client = get_gemini_client()
+        
+        prompt = f"""Return ONLY the 3-letter IATA airport code for: {city_name}
+
+Rules:
+- Return ONLY 3 letters (e.g., BOM, LHR, DXB, BLR, DEL)
+- For multiple airports, use the main international one
+- If already a code, return as-is
+- If no airport, return NONE
+
+Examples:
+Mumbai -> BOM
+London -> LHR
+New York -> JFK
+Bangalore -> BLR
+Delhi -> DEL
+
+City: {city_name}
+Code:"""
+        
+        response = client.models.generate_content(
+            model='gemini-2.0-flash-exp',
+            contents=prompt
+        )
+        
+        code = response.text.strip().upper()
+        
+        # Validate it's a 3-letter code
+        if len(code) == 3 and code.isalpha():
+            return code
+        else:
+            return city_name
+            
+    except Exception as e:
+        print(f"❌ Error getting airport code for {city_name}: {e}")
+        return city_name
+
+
+def format_travel_results(json_str: str) -> str:
+    """Format travel search JSON results into readable markdown tables."""
+    try:
+        data = json.loads(json_str)
+        
+        output = "## 🚀 TRAVEL OPTIONS\n\n"
+        
+        params = data.get('search_params', {})
+        output += f"**Route:** {params.get('origin', 'N/A')} → {params.get('destination', 'N/A')}\n"
+        output += f"**Dates:** {params.get('departure_date', 'N/A')}"
+        if params.get('return_date'):
+            output += f" to {params.get('return_date', 'N/A')}"
+        output += f" | **Travelers:** {params.get('travelers', 1)}\n"
+        if params.get('budget_limit'):
+            output += f"**Budget:** ₹{params.get('budget_limit')}\n"
+        output += "\n" + "="*80 + "\n\n"
+        
+        results = data.get('results', {})
+        
+        # Format Flights
+        if 'flights' in results:
+            flights = results['flights']
+            print(f"🔍 DEBUG - Flight success: {flights.get('success')}")
+            print(f"🔍 DEBUG - Outbound flights count: {len(flights.get('outbound_flights', []))}")
+            print(f"🔍 DEBUG - Return flights count: {len(flights.get('return_flights', []))}")
+            
+            if flights.get('success'):
+                route_info = flights.get('route_info', {})
+                
+                if flights.get('outbound_flights'):
+                    output += f"### 📤 Outbound Journey: {route_info.get('origin', params.get('origin'))} → {route_info.get('destination', params.get('destination'))} ({params.get('departure_date')})\n\n"
+                    output += "| # | Airline | Departure | Arrival | Duration | Price |\n"
+                    output += "|---|---------|-----------|---------|----------|-------|\n"
+                    
+                    for i, flight in enumerate(flights['outbound_flights'][:5], 1):
+                        airline = flight.get('airline', 'N/A')
+                        dep_time = flight.get('departure_time', 'N/A')
+                        arr_time = flight.get('arrival_time', 'N/A')
+                        duration_mins = flight.get('duration_minutes', 0)
+                        hours = duration_mins // 60
+                        mins = duration_mins % 60
+                        duration = f"{hours}h {mins}m" if duration_mins else "N/A"
+                        price_value = flight.get('price_per_person', 0)
+                        price = f"₹{price_value:,.0f}" if price_value else "N/A"
+                        
+                        output += f"| {i} | {airline} | {dep_time} | {arr_time} | {duration} | {price} |\n"
+                    output += "\n"
+                
+                if flights.get('return_flights'):
+                    output += f"### 📥 Return Journey: {route_info.get('destination', params.get('destination'))} → {route_info.get('origin', params.get('origin'))} ({params.get('return_date')})\n\n"
+                    output += "| # | Airline | Departure | Arrival | Duration | Price |\n"
+                    output += "|---|---------|-----------|---------|----------|-------|\n"
+                    
+                    for i, flight in enumerate(flights['return_flights'][:5], 1):
+                        airline = flight.get('airline', 'N/A')
+                        dep_time = flight.get('departure_time', 'N/A')
+                        arr_time = flight.get('arrival_time', 'N/A')
+                        duration_mins = flight.get('duration_minutes', 0)
+                        hours = duration_mins // 60
+                        mins = duration_mins % 60
+                        duration = f"{hours}h {mins}m" if duration_mins else "N/A"
+                        price_value = flight.get('price_per_person', 0)
+                        price = f"₹{price_value:,.0f}" if price_value else "N/A"
+                        
+                        output += f"| {i} | {airline} | {dep_time} | {arr_time} | {duration} | {price} |\n"
+                    output += "\n"
+                
+                if not flights.get('outbound_flights') and not flights.get('return_flights'):
+                    output += "### ✈️ Flights\n\nNo flights found for the selected route and dates.\n\n"
+            else:
+                error_msg = flights.get('error', 'Unknown error')
+                output += f"### ✈️ Flights\n\n❌ Flight search failed: {error_msg}\n\n"
+        
+        # Format Ground Transport
+        if 'ground_transport' in results and results['ground_transport'].get('success'):
+            ground = results['ground_transport']
+            
+            # Trains
+            if ground.get('outbound_trains'):
+                output += "### 🚆 Outbound Trains\n\n"
+                output += "| # | Train | Class | Departure | Arrival | Duration | Price | Platform |\n"
+                output += "|---|-------|-------|-----------|---------|----------|-------|----------|\n"
+                
+                for i, train in enumerate(ground['outbound_trains'][:5], 1):
+                    operator = train.get('operator', 'N/A').replace('|', '-')
+                    service = train.get('service_type', 'N/A')
+                    dep_time = train.get('departure_time', 'N/A')
+                    arr_time = train.get('arrival_time', 'N/A')
+                    duration_mins = train.get('duration_minutes', 0)
+                    hours = duration_mins // 60
+                    mins = duration_mins % 60
+                    duration = f"{hours}h {mins}m"
+                    price = f"₹{train.get('price_per_person', 'N/A'):,}" if isinstance(train.get('price_per_person'), (int, float)) else "N/A"
+                    platform = train.get('platform', 'N/A')
+                    
+                    output += f"| {i} | {operator} | {service} | {dep_time} | {arr_time} | {duration} | {price} | {platform} |\n"
+                output += "\n"
+            
+            if ground.get('return_trains'):
+                output += "### 🚆 Return Trains\n\n"
+                output += "| # | Train | Class | Departure | Arrival | Duration | Price | Platform |\n"
+                output += "|---|-------|-------|-----------|---------|----------|-------|----------|\n"
+                
+                for i, train in enumerate(ground['return_trains'][:5], 1):
+                    operator = train.get('operator', 'N/A').replace('|', '-')
+                    service = train.get('service_type', 'N/A')
+                    dep_time = train.get('departure_time', 'N/A')
+                    arr_time = train.get('arrival_time', 'N/A')
+                    duration_mins = train.get('duration_minutes', 0)
+                    hours = duration_mins // 60
+                    mins = duration_mins % 60
+                    duration = f"{hours}h {mins}m"
+                    price = f"₹{train.get('price_per_person', 'N/A'):,}" if isinstance(train.get('price_per_person'), (int, float)) else "N/A"
+                    platform = train.get('platform', 'N/A')
+                    
+                    output += f"| {i} | {operator} | {service} | {dep_time} | {arr_time} | {duration} | {price} | {platform} |\n"
+                output += "\n"
+            
+            # Buses
+            if ground.get('outbound_buses'):
+                output += "### 🚌 Outbound Buses\n\n"
+                output += "| # | Operator | Type | Departure | Arrival | Duration | Price | Platform |\n"
+                output += "|---|----------|------|-----------|---------|----------|-------|----------|\n"
+                
+                for i, bus in enumerate(ground['outbound_buses'][:5], 1):
+                    operator = bus.get('operator', 'N/A').replace('|', '-')
+                    service = bus.get('service_type', 'N/A')
+                    dep_time = bus.get('departure_time', 'N/A')
+                    arr_time = bus.get('arrival_time', 'N/A')
+                    duration_mins = bus.get('duration_minutes', 0)
+                    hours = duration_mins // 60
+                    mins = duration_mins % 60
+                    duration = f"{hours}h {mins}m"
+                    price = f"₹{bus.get('price_per_person', 'N/A'):,}" if isinstance(bus.get('price_per_person'), (int, float)) else "N/A"
+                    platform = bus.get('platform', 'N/A')
+                    
+                    output += f"| {i} | {operator} | {service} | {dep_time} | {arr_time} | {duration} | {price} | {platform} |\n"
+                output += "\n"
+            
+            if ground.get('return_buses'):
+                output += "### 🚌 Return Buses\n\n"
+                output += "| # | Operator | Type | Departure | Arrival | Duration | Price | Platform |\n"
+                output += "|---|----------|------|-----------|---------|----------|-------|----------|\n"
+                
+                for i, bus in enumerate(ground['return_buses'][:5], 1):
+                    operator = bus.get('operator', 'N/A').replace('|', '-')
+                    service = bus.get('service_type', 'N/A')
+                    dep_time = bus.get('departure_time', 'N/A')
+                    arr_time = bus.get('arrival_time', 'N/A')
+                    duration_mins = bus.get('duration_minutes', 0)
+                    hours = duration_mins // 60
+                    mins = duration_mins % 60
+                    duration = f"{hours}h {mins}m"
+                    price = f"₹{bus.get('price_per_person', 'N/A'):,}" if isinstance(bus.get('price_per_person'), (int, float)) else "N/A"
+                    platform = bus.get('platform', 'N/A')
+                    
+                    output += f"| {i} | {operator} | {service} | {dep_time} | {arr_time} | {duration} | {price} | {platform} |\n"
+                output += "\n"
+            
+            # Check if no trains/buses found
+            has_trains = ground.get('outbound_trains') or ground.get('return_trains')
+            has_buses = ground.get('outbound_buses') or ground.get('return_buses')
+            
+            if not has_trains and not has_buses:
+                output += "### 🚆🚌 Ground Transport\n\n"
+                output += "No trains or buses found for the selected route and dates.\n\n"
+        elif 'ground_transport' in results:
+            # Ground transport search was attempted but failed
+            ground = results['ground_transport']
+            if not ground.get('success'):
+                error_msg = ground.get('error', 'Unknown error')
+                output += f"### 🚆🚌 Ground Transport\n\n❌ Search failed: {error_msg}\n\n"
+        
+        return output
+    except Exception as e:
+        return f"Error formatting results: {str(e)}\n\nRaw output:\n```json\n{json_str}\n```"
+
+
 # Configure Streamlit page
 st.set_page_config(
     page_title="TripMazer - AI Travel Planner",
@@ -330,9 +553,10 @@ def trip_planning_section():
         # Number of travelers
         travelers = st.number_input("Number of Travelers", min_value=1, max_value=10, value=2)
         
-        # Budget
-        budget = st.number_input("Budget (in your local currency)", min_value=0, value=50000)
-        currency = st.selectbox("Currency", ["INR", "USD", "EUR", "GBP"])
+        # Budget (always in INR)
+        budget = st.number_input("Budget (in INR ₹)", min_value=0, value=50000)
+        currency = "INR"  # Always use INR for all destinations
+        st.info("💡 All prices are displayed in INR (Indian Rupees) regardless of destination")
     
     with col2:
         st.subheader("⚙️ Preferences")
@@ -357,20 +581,45 @@ def trip_planning_section():
         if source and destination:
             with st.spinner("🔄 Searching for the best travel options..."):
                 try:
-                    # Construct query for the optimization tool
-                    query = f"""
-                    Plan travel from {source} to {destination} for {travelers} people.
-                    Travel dates: {start_date.strftime('%d-%m-%Y')} to {end_date.strftime('%d-%m-%Y')}
-                    Budget: {currency} {budget}
-                    Trip type: {trip_type}
-                    Special requests: {special_requests}
-                    Search modes: {', '.join([m for m, enabled in [('Flights', search_flights), ('Trains', search_trains), ('Buses', search_buses)] if enabled])}
-                    """
+                    # Build transport modes list from checkboxes
+                    transport_modes = []
+                    if search_flights:
+                        transport_modes.append("flight")
+                    if search_trains:
+                        transport_modes.append("train")
+                    if search_buses:
+                        transport_modes.append("bus")
                     
-                    # Call the optimization tool
-
-                    results = travel_search_tool.invoke({"query": query})
-                    # results = optimize_travel(query)
+                    # Default to flights if nothing selected
+                    if not transport_modes:
+                        transport_modes = ["flight"]
+                    
+                    # Format dates to YYYY-MM-DD
+                    departure_date_str = start_date.strftime('%Y-%m-%d')
+                    return_date_str = end_date.strftime('%Y-%m-%d') if trip_type == "Round Trip" else None
+                    
+                    # Resolve airport codes for flight searches
+                    origin_airport = get_airport_code(source) if 'flight' in transport_modes else None
+                    destination_airport = get_airport_code(destination) if 'flight' in transport_modes else None
+                    
+                    # Show airport codes if flights selected
+                    if 'flight' in transport_modes:
+                        st.info(f"🛫 Using airports: {source} ({origin_airport}) → {destination} ({destination_airport})")
+                    
+                    # Call the optimization tool with structured parameters
+                    results = travel_search_tool.invoke({
+                        "origin": source,
+                        "destination": destination,
+                        "departure_date": departure_date_str,
+                        "return_date": return_date_str,
+                        "transport_modes": transport_modes,
+                        "travelers": travelers,
+                        "budget_limit": budget if budget > 0 else None,
+                        "currency": currency,
+                        "origin_airport": origin_airport,
+                        "destination_airport": destination_airport,
+                        "trip_type": "round_trip" if trip_type == "Round Trip" else "one_way"
+                    })
                     
                     # Store results in session state
                     st.session_state.trip_data = {
@@ -387,13 +636,16 @@ def trip_planning_section():
                     # Display results
                     st.success("✅ Travel options found!")
                     st.markdown("### 🎉 Search Results")
-                    st.markdown(results)
+                    
+                    # Format and display the results
+                    formatted_results = format_travel_results(results)
+                    st.markdown(formatted_results)
                     
                 except Exception as e:
                     st.error(f"❌ Error searching travel options: {str(e)}")
                     st.info("💡 Make sure your environment variables are properly configured.")
         else:
-            st.warning("⚠️ Please fill in both source and destination cities.")
+            st.warning(" Please fill in both source and destination cities.")
 
 def accommodations_section():
     """Accommodations search section"""
@@ -416,18 +668,25 @@ def accommodations_section():
             default_checkout = None
             default_guests = 2
         
-        destination = st.text_input("Destination", value=default_destination, placeholder="e.g., Paris")
+        destination = st.text_input("Destination", value=default_destination, placeholder="e.g., Paris, Mumbai, Dubai")
         checkin_date = st.date_input("Check-in Date", value=default_checkin, min_value=date.today())
         checkout_date = st.date_input("Check-out Date", value=default_checkout, min_value=date.today())
         guests = st.number_input("Number of Guests", min_value=1, max_value=10, value=default_guests)
         
-        accommodation_budget = st.number_input("Accommodation Budget", min_value=0, value=10000)
-        room_type = st.selectbox("Room Type Preference", ["Any", "Single", "Double", "Suite", "Family Room"])
-        
-        amenities = st.multiselect(
-            "Preferred Amenities",
-            ["WiFi", "Breakfast", "Pool", "Gym", "Spa", "Parking", "Pet Friendly", "Business Center"]
+        # Accommodation preference: Budget or Luxury (determines SERP query)
+        st.markdown("**Accommodation Preference**")
+        accommodation_type = st.radio(
+            "Select preference:",
+            ["Budget (Hotels & Hostels)", "Luxury (Premium Hotels)"],
+            help="Budget: Affordable hotels, hostels, and budget accommodations\nLuxury: Premium hotels, resorts, and high-end properties",
+            label_visibility="collapsed"
         )
+        
+        # Info about what user will get
+        if accommodation_type == "Budget (Hotels & Hostels)":
+            st.info("🏨 **Budget Search:** Searching for affordable hotels, hostels, and budget-friendly accommodations with best value for money.")
+        else:
+            st.info("✨ **Luxury Search:** Searching for premium hotels, resorts, and high-end properties with top amenities and services.")
     
     with col2:
         st.subheader("🎯 Quick Options")
@@ -442,34 +701,37 @@ def accommodations_section():
     # Search accommodations
     if st.button("🏨 Search Accommodations", type="primary", use_container_width=True):
         if destination:
-            with st.spinner("🔄 Finding perfect accommodations..."):
+            with st.spinner("🔄 Searching hotels via Google Hotels API..."):
                 try:
-                    amenities_str = ", ".join(amenities) if amenities else "standard amenities"
-                    query = f"""
-                    Find accommodations in {destination} for {guests} people 
-                    from {checkin_date.strftime('%d-%m-%Y')} to {checkout_date.strftime('%d-%m-%Y')}
-                    with budget {accommodation_budget} and prefer {amenities_str}
-                    and {room_type} room type
-                    """
-                    
                     # Extract parameters for SERP hotel search
                     check_in_str = checkin_date.strftime('%Y-%m-%d')
                     check_out_str = checkout_date.strftime('%Y-%m-%d')
-                    currency = "INR"  # Default to INR for India, can be enhanced based on destination
                     
-                    # Call tool with both query and extracted parameters using invoke
+                    # Always use INR for all destinations
+                    currency = "INR"
+                    
+                    # Construct simple SERP query based on accommodation type
+                    # CRITICAL: SERP API fails with detailed queries - keep it simple!
+                    if accommodation_type == "Luxury (Premium Hotels)":
+                        serp_query = f"Luxury hotels in {destination}"
+                    else:
+                        serp_query = f"Budget hotels and hostels in {destination}"
+                    
+                    # Call tool with structured parameters
+                    # Note: rating defaults to [7, 8, 9] in tool - no need to specify
                     results = search_accommodations.invoke({
-                        "query": query,
                         "location": destination,
                         "check_in_date": check_in_str,
                         "check_out_date": check_out_str,
                         "adults": guests,
                         "children": 0,
-                        "currency": currency
+                        "currency": currency,
+                        # rating defaults to [7, 8, 9] in tool
+                        "query": serp_query  # Simple query: "Budget hotels and hostels in X" or "Luxury hotels in X"
                     })
                     
-                    st.success("✅ Accommodations found!")
-                    st.markdown("### 🏨 Accommodation Options")
+                    st.success("✅ Hotels found via Google Hotels API!")
+                    st.markdown("### 🏨 Hotel Search Results")
                     st.markdown(results)
                     
                 except Exception as e:
@@ -797,15 +1059,9 @@ You can also try using the individual planning sections above."""
 
 ---
 
-### 📊 **Planning Summary**
-{execution_summary if execution_summary else "Planning completed successfully with all tools executed."}
-
----
-
-💡 **Next Steps:**
+ **Next Steps:**
 - Review the itinerary and make any adjustments needed
 - Book accommodations and flights as recommended
-- Save restaurant recommendations for your trip
 - Check visa requirements if traveling internationally
 
 *This comprehensive plan was created using AI analysis of your preferences and real-time data.*"""

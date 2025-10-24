@@ -68,11 +68,12 @@ class PerplexityService:
 
             if response.status_code == 200:
                 result = response.json()
-                self.logger.info(f"Search successful for query: {query}")
-                # Return raw content from the first choice; caller can handle parsing
-                return result["choices"][0]["message"]["content"]
+                # Log a concise summary instead of full query
+                self.logger.info("Perplexity search successful", model=model)
+                return result['choices'][0]['message']['content']
             else:
-                self.logger.error(f"Search failed: {response.status_code} - {response.text}")
+                # Keep error concise
+                self.logger.warning("Perplexity search failed", status=response.status_code)
                 return {"error": f"API request failed: {response.status_code}"}
 
         except Exception as e:
