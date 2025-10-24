@@ -38,15 +38,28 @@ def _extract_flight_details(flight_data: Dict[str, Any], adults: int) -> Dict[st
             for f in flight_data.get('flights', [])
         ])
         
-        arrival_airport = ', '.join([   
-            f"{f.get('arrival_airport', {}).get('name', 'N/A')} ({f.get('arrival_airport', {}).get('time', 'N/A')})"
-            for f in flight_data.get('flights', [])
-        ])
+        # Create route flow showing departure → arrival for each segment
+        flight_segments = flight_data.get('flights', [])
+        route_segments = []
         
-        departure_airport = ', '.join([
-            f"{f.get('departure_airport', {}).get('name', 'N/A')} ({f.get('departure_airport', {}).get('time', 'N/A')})"
-            for f in flight_data.get('flights', [])
-        ])
+        for f in flight_segments:
+            dep_name = f.get('departure_airport', {}).get('name', 'N/A')
+            dep_time = f.get('departure_airport', {}).get('time', 'N/A')
+            arr_name = f.get('arrival_airport', {}).get('name', 'N/A')
+            arr_time = f.get('arrival_airport', {}).get('time', 'N/A')
+            
+            # Extract just time (HH:MM) from full datetime if present
+            if dep_time and len(dep_time) > 5:
+                dep_time = dep_time.split(' ')[-1] if ' ' in dep_time else dep_time[-5:]
+            if arr_time and len(arr_time) > 5:
+                arr_time = arr_time.split(' ')[-1] if ' ' in arr_time else arr_time[-5:]
+            
+            route_segments.append(f"{dep_name} ({dep_time})")
+            # Add arrival for the last segment
+            if f == flight_segments[-1]:
+                route_segments.append(f"{arr_name} ({arr_time})")
+        
+        route_flow = ' → '.join(route_segments)
         
         layovers = flight_data.get("layovers")
         if layovers:
@@ -113,8 +126,7 @@ def _extract_flight_details(flight_data: Dict[str, Any], adults: int) -> Dict[st
             'travel_class': travel_class,
             'flight_number': flight_number,
             'layovers': layover_info,
-            'departure_airport': departure_airport,
-            'arrival_airport': arrival_airport,
+            'route_flow': route_flow,
             # 'carbon_grams': carbon_grams
         }
     except Exception as e:
@@ -126,8 +138,7 @@ def _extract_flight_details(flight_data: Dict[str, Any], adults: int) -> Dict[st
             'price_per_person': 0,
             'carbon_grams': 0,
             'layovers': 'N/A',
-            'departure_airport': 'N/A',
-            'arrival_airport': 'N/A',
+            'route_flow': 'N/A',
             'parse_error': str(e)
         }
 
@@ -633,8 +644,8 @@ def format_travel_results_as_markdown(results: Dict[str, Any]) -> str:
             
             if outbound_flights:
                 output.append(f"**>> Outbound Journey ({origin} → {destination}) - {departure_date}**\n")
-                output.append("| # | Airline | Aircraft/Flight# | Class | Departure Airport | Arrival Airport | Departure | Arrival | Duration | Layovers | Price/Person |")
-                output.append("|---|---------|------------------|-------|-------------------|-----------------|-----------|---------|----------|----------|-------|")
+                output.append("| # | Flight | Transit | Price/Person | Departure | Arrival | Duration | Layovers | Class |")
+                output.append("|---|--------|---------|-------|-----------|---------|----------|----------|-------|")
                 
                 for idx, flight in enumerate(outbound_flights[:3], 1):
                     airline = flight.get('airline', 'Unknown')[:30]
@@ -642,15 +653,15 @@ def format_travel_results_as_markdown(results: Dict[str, Any]) -> str:
                     flight_number = flight.get('flight_number', '')
                     travel_class = flight.get('travel_class', 'N/A')
                     
-                    # Combine airplane and flight number
+                    # Combine airline and aircraft/flight number into single Flight column
                     if flight_number and airplane != 'Unknown':
-                        aircraft_info = f"{airplane} ({flight_number})"
+                        flight_info = f"{airline} - {airplane} ({flight_number})"
                     elif flight_number:
-                        aircraft_info = flight_number
+                        flight_info = f"{airline} - {flight_number}"
                     elif airplane != 'Unknown':
-                        aircraft_info = airplane
+                        flight_info = f"{airline} - {airplane}"
                     else:
-                        aircraft_info = 'N/A'
+                        flight_info = airline
                     
                     departure = flight.get('departure_time', 'N/A')
                     arrival = flight.get('arrival_time', 'N/A')
@@ -658,18 +669,17 @@ def format_travel_results_as_markdown(results: Dict[str, Any]) -> str:
                     duration = f"{duration_min//60}h {duration_min%60}m" if duration_min else "N/A"
                     price = flight.get('price_per_person', 0)
                     layovers = flight.get('layovers', 'Direct')
-                    departure_airport = flight.get('departure_airport', 'N/A')
-                    arrival_airport = flight.get('arrival_airport', 'N/A')
+                    route_flow = flight.get('route_flow', 'N/A')
                     
-                    output.append(f"| {idx} | {airline} | {aircraft_info} | {travel_class} | {departure_airport} | {arrival_airport} | {departure} | {arrival} | {duration} | {layovers} | ₹{price:,.0f} |")
+                    output.append(f"| {idx} | {flight_info} | {route_flow} | ₹{price:,.0f} | {departure} | {arrival} | {duration} | {layovers} | {travel_class} |")
                 output.append("")
             else:
                 output.append(f"⚠️ No flight options available for outbound journey.\n")
             
             if return_flights and return_date:
                 output.append(f"**<< Return Journey ({destination} → {origin}) - {return_date}**\n")
-                output.append("| # | Airline | Aircraft/Flight# | Class | Departure Airport | Arrival Airport | Departure | Arrival | Duration | Layovers | Price/Person |")
-                output.append("|---|---------|------------------|-------|-------------------|-----------------|-----------|---------|----------|----------|-------|")
+                output.append("| # | Flight | Transit | Price/Person | Departure | Arrival | Duration | Layovers | Class |")
+                output.append("|---|--------|---------|-------|-----------|---------|----------|----------|-------|")
                 
                 for idx, flight in enumerate(return_flights[:3], 1):
                     airline = flight.get('airline', 'Unknown')[:30]
@@ -677,15 +687,15 @@ def format_travel_results_as_markdown(results: Dict[str, Any]) -> str:
                     flight_number = flight.get('flight_number', '')
                     travel_class = flight.get('travel_class', 'N/A')
                     
-                    # Combine airplane and flight number
+                    # Combine airline and aircraft/flight number into single Flight column
                     if flight_number and airplane != 'Unknown':
-                        aircraft_info = f"{airplane} ({flight_number})"
+                        flight_info = f"{airline} - {airplane} ({flight_number})"
                     elif flight_number:
-                        aircraft_info = flight_number
+                        flight_info = f"{airline} - {flight_number}"
                     elif airplane != 'Unknown':
-                        aircraft_info = airplane
+                        flight_info = f"{airline} - {airplane}"
                     else:
-                        aircraft_info = 'N/A'
+                        flight_info = airline
                     
                     departure = flight.get('departure_time', 'N/A')
                     arrival = flight.get('arrival_time', 'N/A')
@@ -693,10 +703,9 @@ def format_travel_results_as_markdown(results: Dict[str, Any]) -> str:
                     duration = f"{duration_min//60}h {duration_min%60}m" if duration_min else "N/A"
                     price = flight.get('price_per_person', 0)
                     layovers = flight.get('layovers', 'Direct')
-                    departure_airport = flight.get('departure_airport', 'N/A')
-                    arrival_airport = flight.get('arrival_airport', 'N/A')
+                    route_flow = flight.get('route_flow', 'N/A')
                     
-                    output.append(f"| {idx} | {airline} | {aircraft_info} | {travel_class} | {departure_airport} | {arrival_airport} | {departure} | {arrival} | {duration} | {layovers} | ₹{price:,.0f} |")
+                    output.append(f"| {idx} | {flight_info} | {route_flow} | ₹{price:,.0f} | {departure} | {arrival} | {duration} | {layovers} | {travel_class} |")
                 output.append("")
             elif return_date:
                 output.append(f"⚠️ No flight options available for return journey.\n")
@@ -709,8 +718,8 @@ def format_travel_results_as_markdown(results: Dict[str, Any]) -> str:
             output.append("### 🚌 Bus Options\n")
             if ground_transport.get('outbound_buses'):
                 output.append(f"**>> Outbound Journey ({origin} → {destination}) - {departure_date}**\n")
-                output.append("| # | Operator | Service | Departure | Arrival | Duration | Price | Platform |")
-                output.append("|---|----------|---------|-----------|---------|----------|-------|----------|")
+                output.append("| # | Operator | Price/Person | Departure | Arrival | Duration | Service | Platform |")
+                output.append("|---|----------|-------|-----------|---------|----------|---------|----------|")
                 
                 for idx, bus in enumerate(ground_transport['outbound_buses'][:3], 1):
                     operator = bus.get('operator', 'Unknown')[:20]
@@ -722,15 +731,15 @@ def format_travel_results_as_markdown(results: Dict[str, Any]) -> str:
                     price = bus.get('price_per_person', 0)
                     platform = bus.get('platform', 'N/A')
                     
-                    output.append(f"| {idx} | {operator} | {service} | {departure} | {arrival} | {duration} | ₹{price:,.0f} | {platform} |")
+                    output.append(f"| {idx} | {operator} | ₹{price:,.0f} | {departure} | {arrival} | {duration} | {service} | {platform} |")
                 output.append("")
             else:
                 output.append(f"⚠️ No bus options available for outbound journey.\n")
                 
             if ground_transport.get('return_buses') and return_date:
                 output.append(f"**<< Return Journey ({destination} → {origin}) - {return_date}**\n")
-                output.append("| # | Operator | Service | Departure | Arrival | Duration | Price | Platform |")
-                output.append("|---|----------|---------|-----------|---------|----------|-------|----------|")
+                output.append("| # | Operator | Price/Person | Departure | Arrival | Duration | Service | Platform |")
+                output.append("|---|----------|-------|-----------|---------|----------|---------|----------|")
                 
                 for idx, bus in enumerate(ground_transport['return_buses'][:3], 1):
                     operator = bus.get('operator', 'Unknown')[:20]
@@ -742,16 +751,16 @@ def format_travel_results_as_markdown(results: Dict[str, Any]) -> str:
                     price = bus.get('price_per_person', 0)
                     platform = bus.get('platform', 'N/A')
                     
-                    output.append(f"| {idx} | {operator} | {service} | {departure} | {arrival} | {duration} | ₹{price:,.0f} | {platform} |")
+                    output.append(f"| {idx} | {operator} | ₹{price:,.0f} | {departure} | {arrival} | {duration} | {service} | {platform} |")
                 output.append("")
             elif return_date:
                 output.append(f"⚠️ No bus options available for return journey.\n")
             
             # Train Options  
-            output.append("### � Train Options\n")
+            output.append("### 🚂 Train Options\n")
             if ground_transport.get('outbound_trains'):
                 output.append(f"**>> Outbound Journey ({origin} → {destination}) - {departure_date}**\n")
-                output.append("| # | Train | Class | Departure | Arrival | Duration | Price | Platform |")
+                output.append("| # | Train | Price/Person | Departure | Arrival | Duration | Class | Platform |")
                 output.append("|---|-------|-------|-----------|---------|----------|-------|----------|")
                 
                 for idx, train in enumerate(ground_transport['outbound_trains'][:3], 1):
@@ -764,14 +773,14 @@ def format_travel_results_as_markdown(results: Dict[str, Any]) -> str:
                     price = train.get('price_per_person', 0)
                     platform = train.get('platform', 'N/A')
                     
-                    output.append(f"| {idx} | {operator} | {service} | {departure} | {arrival} | {duration} | ₹{price:,.0f} | {platform} |")
+                    output.append(f"| {idx} | {operator} | ₹{price:,.0f} | {departure} | {arrival} | {duration} | {service} | {platform} |")
                 output.append("")
             else:
                 output.append(f"⚠️ No train options available for outbound journey.\n")
                 
             if ground_transport.get('return_trains') and return_date:
                 output.append(f"**<< Return Journey ({destination} → {origin}) - {return_date}**\n")
-                output.append("| # | Train | Class | Departure | Arrival | Duration | Price | Platform |")
+                output.append("| # | Train | Price/Person | Departure | Arrival | Duration | Class | Platform |")
                 output.append("|---|-------|-------|-----------|---------|----------|-------|----------|")
                 
                 for idx, train in enumerate(ground_transport['return_trains'][:3], 1):
@@ -784,7 +793,7 @@ def format_travel_results_as_markdown(results: Dict[str, Any]) -> str:
                     price = train.get('price_per_person', 0)
                     platform = train.get('platform', 'N/A')
                     
-                    output.append(f"| {idx} | {operator} | {service} | {departure} | {arrival} | {duration} | ₹{price:,.0f} | {platform} |")
+                    output.append(f"| {idx} | {operator} | ₹{price:,.0f} | {departure} | {arrival} | {duration} | {service} | {platform} |")
                 output.append("")
             elif return_date:
                 output.append(f"⚠️ No train options available for return journey.\n")

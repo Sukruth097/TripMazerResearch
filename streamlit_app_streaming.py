@@ -273,7 +273,7 @@ def get_airport_code(city_name: str) -> str:
 
 Rules:
 - Return ONLY 3 letters (e.g., BOM, LHR, DXB, BLR, DEL)
-- For multiple airports, use the main international one
+- For multiple airports, use the main international one Ex: Paris -> CDG
 - If already a code, return as-is
 - If no airport, return the city name
 
