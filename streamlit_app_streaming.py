@@ -272,17 +272,109 @@ def get_airport_code(city_name: str) -> str:
         prompt = f"""Return ONLY the 3-letter IATA airport code for: {city_name}
 
 Rules:
-- Return ONLY 3 letters (e.g., BOM, LHR, DXB, BLR, DEL)
-- For multiple airports, use the main international one Ex: Paris -> CDG
-- If already a code, return as-is
-- If no airport, return the city name
 
-Examples:
-Mumbai -> BOM
-London -> LHR
-New York -> JFK
-Dubai -> DXB
-Bangalore -> BLR"""
+Return ONLY 3 letters (e.g., BOM, LHR, DXB, BLR, DEL).
+
+For multiple airports in the same city, return the main international airport (e.g., Paris → CDG).
+
+If the input is already an airport code, return it as-is.
+
+✈️ Airport Selection Logic
+
+Nearby airports (within 100 km):
+
+Identify all airports within 100 km of the location.
+
+If none exist, return exactly: no airport in this location.
+
+Priority zone (within 50 km):
+
+If one or more airports lie within 50 km, choose the nearest one from this zone and ignore farther options.
+
+This ensures local airports take precedence over large but distant hubs.
+
+100 km fallback:
+
+If no airport is within 50 km, pick the nearest one within 100 km.
+
+Tie-breaker rule:
+
+If two airports are within 5 km distance of each other, prefer the larger airport (higher passenger volume or international status).
+
+Ambiguity rule:
+
+If the location name refers to multiple distant cities, choose the most globally recognized one.
+
+✅ Examples
+Location	Output	Explanation
+Mumbai	BOM	Main international airport
+London	LHR	Main international airport
+New York	JFK	Main international airport
+Dubai	DXB	Main international airport
+Bangalore	BLR	Main international airport
+Paris	CDG	Main international airport
+Mysore	MYQ	Has a local domestic airport within 50 km
+Coorg	no airport in this location	Nearest airport (Kannur, CNN) is ~120 km away
+Munnar	no airport in this location	Nearest airport (COK) is ~110 km away
+Ooty	no airport in this location	Nearest airport (CJB) is ~90 km but mountainous route → optional include if you prefer 100 km strict cutoff
+Pune	PNQ	Main airport within city
+Nashik	ISK	Domestic airport within 50 km
+Surat	STV	Local airport within 50 km
+Chandigarh	IXC	Main airport within city
+Jaipur	JAI	Main airport within city
+Kochi	COK	Main airport within city
+Amritsar	ATQ	Main international airport
+Tirupati	TIR	Domestic airport within city
+Puducherry	PNY	Local airport within 50 km
+Madurai	IXM	Main airport within city
+Coimbatore	CJB	Main airport within city
+Vellore	no airport in this location	Nearest airport (MAA) ~120 km
+Indore	IDR	Main airport within city
+Goa	GOI	Main airport within city
+Udaipur	UDR	Main airport within city
+Bhubaneswar	BBI	Main airport within city
+Agra	AGR	Local airport within city
+
+---
+
+### 🧭 Auto-Correction Logic for Input City Names
+
+If the entered city name (source or destination) has **spelling mistakes, typos, or grammatical errors**, the system should automatically:
+1. Detect the most likely intended city name.
+2. Correct it internally before applying airport selection rules.
+3. Proceed with finding the correct IATA code.
+
+This ensures that users do not need to type city names perfectly.
+
+**Example behavior:**
+- Input: “bangluru” → Corrected: “Bangalore” → Output: “BLR”
+- Input: “chitoor” → Corrected: “Chittoor” → Output: “nearest airport Tirupati (TIR) (~70 km away)”
+- Input: “nyc” or “newyorkk” → Corrected: “New York” → Output: “JFK”
+
+---
+
+### 🧾 Dynamic Nearest-Airport Clarification Message
+
+If a city has **no airport within its boundary**, but a nearby one (within 100 km) is used for flights:
+- Display a clarification line **above both the outbound and return journey sections**.
+- The message should read:
+
+> “There are no airports in this location; the nearest airport is [Airport Name] ([Code]), approximately [XX] km away.”
+
+- `[XX]` is the dynamically calculated road or aerial distance in kilometers (rounded to the nearest whole number).
+
+**Example Integration Critical to follow below pattern:**
+```
+There are no airports in this location; the nearest airport is Tirupati (TIR), approximately 70 km away.
+>> Outbound Journey (BLR → Chittoor) - 2025-10-27
+...
+<< Return Journey (Chittoor → BLR) - 2025-10-29
+```
+
+If the city has its own airport, skip this line and display results normally.
+"""
+
+
 
         response = client.models.generate_content(
             model="gemini-2.0-flash",
