@@ -201,10 +201,10 @@ class TripOptimizationAgent:
     @retry_on_overload(max_retries=3, initial_delay=2)
     def extract_travel_parameters_with_azure_openai(self, query: str) -> TravelSearchParams:
         """
-        Extract travel search parameters using Azure OpenAI.
+        Extract travel search parameters using the comprehensive extraction method.
         
-        This method handles the parameter extraction that was previously done in tools.
-        Now the agent takes responsibility for AI-powered parameter extraction.
+        This method now uses the same comprehensive extraction as the streaming flow
+        to reduce LLM calls and ensure consistency.
         
         Args:
             query: Natural language travel query
@@ -212,115 +212,52 @@ class TripOptimizationAgent:
         Returns:
             TravelSearchParams entity with extracted parameters
         """
-        self.logger.info("Extracting travel parameters with Azure OpenAI...")
+        self.logger.info("Extracting travel parameters using comprehensive method...")
         
         try:
-            system_prompt = """You are a travel parameter extraction expert. Extract travel search parameters from natural language queries and return them as valid JSON."""
+            # Use the comprehensive extraction method (same as streaming flow)
+            all_params = self._extract_complete_trip_parameters(query, conversation_history=None)
             
-            user_prompt = f"""
-            TASK: Extract travel search parameters from natural language query.
+            # Check if query was identified as non-travel
+            if all_params.get("error") == "non_travel_query":
+                self.logger.warning("Non-travel query detected")
+                # Return fallback params for non-travel queries
+                return TravelSearchParams(
+                    origin="Not specified",
+                    destination="Not specified", 
+                    departure_date="2025-12-01",
+                    return_date="2025-12-05",
+                    transport_modes=["flight", "bus", "train"],
+                    travelers=1,
+                    currency="INR",
+                    budget_limit=50000,
+                    preference_type="mid-range",
+                    trip_type="round_trip",
+                    is_domestic=True
+                )
             
-            QUERY: "{query}"
+            # Extract travel_params from comprehensive result
+            travel_params = all_params.get('travel_params', {})
             
-            CRITICAL: Always provide valid values for departure_date and budget_limit. Never return null/None for these fields.
+            # Create TravelSearchParams entity from extracted data
+            params = TravelSearchParams.from_dict(travel_params)
             
-            Extract the following parameters and return as JSON:
-            
-            {{
-                "origin": "departure city/location (extract from phrases like 'from X', 'starting from X', 'Bangalore to')",
-                "destination": "arrival city/location (extract from phrases like 'to X', 'destination X', 'to Coorg')", 
-                "departure_date": "YYYY-MM-DD format (convert dates like 25-10-25 to 2025-10-25) - REQUIRED, use 2025-12-01 if not specified",
-                "return_date": "YYYY-MM-DD format or null for one-way (calculate from trip duration)",
-                "travelers": "number of travelers (extract from '3 people', '2 persons', etc.)",
-                "budget_limit": "budget amount (number only) or null if not mentioned (extract from '30000rs', 'budget 50k', etc.)",
-                "currency": "INR for all destinations (always use INR)",
-                "transport_modes": ["flight", "bus", "train"] - extract from user preference (buses → ["bus", "train"], flights → ["flight"]),
-                "preferred_mode": "user's preferred transport mode or null (extract 'prefer buses' → 'bus')",
-                "trip_type": "round_trip or one_way",
-                "is_domestic": true/false,
-                "budget_priority": "tight/moderate/flexible (extract from 'budget stays', 'cheap', 'economical' → tight)",
-                "time_sensitivity": "urgent/moderate/flexible"
-            }}
-            
-            EXTRACTION RULES:
-            1. **Locations**: 
-               - "Bangalore to Coorg" → origin="Bangalore", destination="Coorg"
-               - "Plan a trip to Delhi" → origin="Not specified", destination="Delhi"
-            2. **Dates (NEVER null)**: 
-               - "25-10-25 to 29-10-25" → departure_date="2025-10-25", return_date="2025-10-29"
-               - "from 25-10-25 to 29-10-25" → departure_date="2025-10-25", return_date="2025-10-29"
-               - "from 1st Dec to 5th Dec 2025" → departure_date="2025-12-01", return_date="2025-12-05"
-               - CRITICAL: Extract exact dates from query, don't use fallback dates unless NO dates mentioned
-               - If no date mentioned → departure_date="2025-12-01"
-            3. **Budget (can be null)**:
-               - "30000rs", "30k", "budget 30000" → budget_limit=30000
-               - If no budget mentioned → budget_limit=null (let interactive system ask user)
-            4. **Transport**:
-               - "prefer buses" → transport_modes=["bus", "train"], preferred_mode="bus"
-               - "flight only" → transport_modes=["flight"]
-               - Not mentioned → transport_modes=["flight", "bus", "train"]
-            5. **Travelers**:
-               - "3 people", "2 persons", "family of 4" → extract exact number
-            6. Always set currency="INR" regardless of destination
-            7. Calculate is_domestic based on Indian cities (Bangalore, Coorg, Delhi, Mumbai, etc.)
-            
-            EXAMPLE:
-            Query: "Plan a trip to bangalore to coorg for 3 people and budget is 30000rs for 4 days from 25-10-25 to 29-10-25 we prefer buses"
-            Output: {{
-                "origin": "Bangalore",
-                "destination": "Coorg",
-                "departure_date": "2025-10-25",
-                "return_date": "2025-10-29",
-                "travelers": 3,
-                "budget_limit": 30000,
-                "currency": "INR",
-                "transport_modes": ["bus", "train"],
-                "preferred_mode": "bus",
-                "trip_type": "round_trip",
-                "is_domestic": true,
-                "budget_priority": "tight",
-                "time_sensitivity": "flexible"
-            }}
-            
-            REMEMBER: departure_date and budget_limit must NEVER be null. Always provide valid values.
-            
-            Return ONLY valid JSON.
-            """
-            
-            response_text = self._call_azure_openai(system_prompt, user_prompt, temperature=0.1)
-            
-            self.logger.info(f"📋 RAW Azure OpenAI response: {response_text[:500]}...")
-            
-            # Clean response
-            if response_text.startswith('```json'):
-                response_text = response_text.replace('```json', '').replace('```', '').strip()
-            elif response_text.startswith('```'):
-                response_text = response_text.replace('```', '').strip()
-            
-            # Parse response
-            extracted_data = json.loads(response_text)
-            
-            # No fallbacks - let interactive system handle missing parameters
-            self.logger.info(f"✅ Extracted parameters: {extracted_data}")
-            
-            # Create TravelSearchParams entity
-            params = TravelSearchParams.from_dict(extracted_data)
-            
-            self.logger.info(f"✅ Extracted parameters: {extracted_data}")
+            self.logger.info(f"✅ Extracted parameters using comprehensive method: {travel_params}")
             return params
             
         except Exception as e:
-            self.logger.error(f"Parameter extraction failed: {e}")
+            self.logger.error(f"Comprehensive parameter extraction failed: {e}")
             # Fallback to basic parameters with valid values
             fallback_params = TravelSearchParams(
                 origin="Not specified",
                 destination="Not specified", 
-                departure_date="2025-12-01",  # Valid date
-                return_date="2025-12-05",     # Valid return date
+                departure_date="2025-12-01",
+                return_date="2025-12-05",
                 transport_modes=["flight", "bus", "train"],
                 travelers=1,
-                currency="INR",  # Always use INR
-                budget_limit=50000,  # Higher fallback budget to accommodate potential international trips
+                currency="INR",
+                budget_limit=50000,
+                preference_type="mid-range",
                 trip_type="round_trip",
                 is_domestic=True
             )
@@ -352,27 +289,80 @@ class TripOptimizationAgent:
             ORIGIN: "{params.origin}"
             DESTINATION: "{params.destination}"
             
-            For each location, intelligently analyze:
+            **CRITICAL AIRPORT SELECTION RULES:**
             
-            1. **Direct Airport Availability**:
-               - Does the location have its own airport? (true/false)
-               - If yes: Provide 3-letter IATA code
-               - If no: Identify nearest major airport with distance
+            1. **Return ONLY 3-letter IATA airport codes** (e.g., BOM, LHR, DXB, BLR, DEL)
+            2. **For multiple airports in same city**, return the main international airport (e.g., Paris → CDG)
+            3. **If input is already an airport code**, return it as-is
             
-            2. **Airport Details**:
-               - origin_has_airport: true/false (does origin have direct airport?)
-               - destination_has_airport: true/false (does destination have direct airport?)
-               - origin_airport: "3-letter IATA code" (if available) or nearest airport code
-               - destination_airport: "3-letter IATA code" (if available) or nearest airport code
-               - origin_airport_distance_km: Distance to nearest airport (0 if direct, else actual distance)
-               - destination_airport_distance_km: Distance to nearest airport (0 if direct, else actual distance)
+            **✈️ Airport Selection Logic:**
             
-            3. **Transport Recommendations**:
-               Based on airport availability and distance, recommend suitable transport modes:
-               - "flight_suitable": true/false (flight makes sense for this route?)
-               - "train_suitable": true/false (train is good option?)
-               - "bus_suitable": true/false (bus is good option?)
-               - "recommended_modes": ["flight", "train", "bus"] ordered by suitability
+            **Nearby airports (within 100 km):**
+            - Identify all airports within 100 km of the location
+            - If none exist, return exactly: "no airport in this location"
+            
+            **Priority zone (within 50 km):**
+            - If one or more airports lie within 50 km, choose the nearest one from this zone and ignore farther options
+            - This ensures local airports take precedence over large but distant hubs
+            
+            **100 km fallback:**
+            - If no airport is within 50 km, pick the nearest one within 100 km
+            
+            **Tie-breaker rule:**
+            - If two airports are within 5 km distance of each other, prefer the larger airport (higher passenger volume or international status)
+            
+            **Ambiguity rule:**
+            - If the location name refers to multiple distant cities, choose the most globally recognized one
+            
+            **🧭 Auto-Correction Logic:**
+            - If city name has spelling mistakes, typos, or grammatical errors, automatically detect and correct it internally
+            - Examples: "bangluru" → "Bangalore" → "BLR", "chitoor" → "Chittoor", "nyc" → "New York" → "JFK"
+            
+            **✅ Reference Examples:**
+            - Mumbai → BOM (Main international airport)
+            - London → LHR (Main international airport)  
+            - New York → JFK (Main international airport)
+            - Dubai → DXB (Main international airport)
+            - Bangalore → BLR (Main international airport)
+            - Paris → CDG (Main international airport)
+            - Mysore → MYQ (Has local domestic airport within 50 km)
+            - Coorg → "no airport in this location" (Nearest airport CNN ~120 km away)
+            - Munnar → "no airport in this location" (Nearest airport COK ~110 km away)
+            - Ooty → "no airport in this location" (Nearest airport CJB ~90 km, mountainous route)
+            - Pune → PNQ (Main airport within city)
+            - Nashik → ISK (Domestic airport within 50 km)
+            - Surat → STV (Local airport within 50 km)
+            - Chandigarh → IXC (Main airport within city)
+            - Jaipur → JAI (Main airport within city)
+            - Kochi → COK (Main airport within city)
+            - Amritsar → ATQ (Main international airport)
+            - Tirupati → TIR (Domestic airport within city)
+            - Puducherry → PNY (Local airport within 50 km)
+            - Madurai → IXM (Main airport within city)
+            - Coimbatore → CJB (Main airport within city)
+            - Vellore → "no airport in this location" (Nearest airport MAA ~120 km)
+            - Indore → IDR (Main airport within city)
+            - Goa → GOI (Main airport within city)
+            - Udaipur → UDR (Main airport within city)
+            - Bhubaneswar → BBI (Main airport within city)
+            - Agra → AGR (Local airport within city)
+            
+            For each location, analyze and provide:
+            
+            **Airport Details:**
+            - origin_has_airport: true/false (does origin have direct airport within 50km?)
+            - destination_has_airport: true/false (does destination have direct airport within 50km?)
+            - origin_airport: "3-letter IATA code" or "no airport in this location"
+            - destination_airport: "3-letter IATA code" or "no airport in this location"
+            - origin_airport_distance_km: Distance to airport (0 if direct, actual distance if nearby, 999 if no airport)
+            - destination_airport_distance_km: Distance to airport (0 if direct, actual distance if nearby, 999 if no airport)
+            
+            **Transport Recommendations:**
+            Based on airport availability and distance, recommend suitable transport modes:
+            - "flight_suitable": true/false (flight makes sense for this route?)
+            - "train_suitable": true/false (train is good option?)
+            - "bus_suitable": true/false (bus is good option?)
+            - "recommended_modes": ["flight", "train", "bus"] ordered by suitability
             
             **EXAMPLES:**
             
@@ -395,11 +385,19 @@ class TripOptimizationAgent:
             Result: {{"destination_has_airport": false, "destination_airport_distance_km": 120, "flight_suitable": false, "recommended_modes": ["train", "bus"]}}
             
             **RULES:**
-            - Direct airport (distance=0) → flight_suitable=true
-            - No airport but <80km → flight_suitable=maybe (consider budget/time)
-            - No airport and >80km → flight_suitable=false (too much ground travel)
+            - **Direct airport (distance=0)** → flight_suitable=true, has_airport=true
+            - **Airport within 50km** → flight_suitable=true, has_airport=true (local airport priority)
+            - **Airport within 50-100km** → flight_suitable=maybe, has_airport=false (consider budget/time)
+            - **No airport within 100km** → flight_suitable=false, has_airport=false, return "no airport in this location"
+            - **Multiple airports within 5km** → choose larger/international airport
             - Always check if locations are in India for domestic classification
-            - Currency always "INR" for all destinations
+            - **Currency Logic**: 
+              * Domestic trips (both Indian cities): currency="INR", destination_currency="INR" 
+              * International trips: currency="INR", destination_currency=[destination country currency]
+              * Examples: India→Dubai: currency="INR", destination_currency="AED"
+              * Examples: India→London: currency="INR", destination_currency="GBP"
+              * Examples: India→USA: currency="INR", destination_currency="USD"
+            - **Distance**: Use 999 for "no airport in this location" cases
             
             Return ONLY valid JSON:
             {{
@@ -414,6 +412,7 @@ class TripOptimizationAgent:
                 "origin_is_indian": true/false,
                 "destination_is_indian": true/false,
                 "currency": "INR",
+                "destination_currency": "INR or destination country currency",
                 "is_domestic": true/false,
                 "is_international": true/false,
                 "flight_suitable": true/false,
@@ -437,7 +436,8 @@ class TripOptimizationAgent:
             # Update parameters with resolved data
             params.origin = resolution_data.get('origin_city', params.origin)
             params.destination = resolution_data.get('destination_city', params.destination) 
-            params.currency = 'INR'  # Always use INR regardless of destination
+            params.currency = 'INR'  # Always use INR as base currency
+            params.destination_currency = resolution_data.get('destination_currency', 'INR')  # Destination currency
             params.is_domestic = resolution_data.get('is_domestic', False)
             params.is_international = resolution_data.get('is_international', True)
             
@@ -498,6 +498,83 @@ class TripOptimizationAgent:
             return params
     
     @retry_on_overload(max_retries=3, initial_delay=2)
+    def convert_prices_to_dual_currency(self, raw_results: str, destination_currency: str) -> str:
+        """
+        Convert prices in travel results to show dual currency for international trips.
+        Uses fast regex-based conversion with pre-defined exchange rates for speed.
+        
+        Args:
+            raw_results: Raw results containing prices in original currency
+            destination_currency: Target currency code (e.g., AED, USD, GBP)
+            
+        Returns:
+            Results with dual currency pricing for international trips
+        """
+        if destination_currency == "INR":
+            return raw_results  # No conversion needed for domestic trips
+            
+        self.logger.info(f"Converting prices to dual currency: INR + {destination_currency}")
+        
+        try:
+            import re
+            
+            # Fast conversion rates (approximate, updated regularly)
+            conversion_rates = {
+                'AED': 0.045,   # 1 INR ≈ 0.045 AED
+                'USD': 0.012,   # 1 INR ≈ 0.012 USD  
+                'GBP': 0.0095,  # 1 INR ≈ 0.0095 GBP
+                'EUR': 0.011,   # 1 INR ≈ 0.011 EUR
+                'SGD': 0.016,   # 1 INR ≈ 0.016 SGD
+                'THB': 0.42,    # 1 INR ≈ 0.42 THB
+                'MYR': 0.053,   # 1 INR ≈ 0.053 MYR
+                'JPY': 1.8,     # 1 INR ≈ 1.8 JPY
+            }
+            
+            # Currency symbols
+            currency_symbols = {
+                'AED': 'AED ',
+                'USD': '$',
+                'GBP': '£', 
+                'EUR': '€',
+                'SGD': 'S$',
+                'THB': '฿',
+                'MYR': 'RM',
+                'JPY': '¥'
+            }
+            
+            rate = conversion_rates.get(destination_currency, 0.012)
+            symbol = currency_symbols.get(destination_currency, destination_currency + ' ')
+            
+            # Fast regex replacement for all ₹X,XXX patterns
+            def convert_price(match):
+                # Extract the numeric value (remove ₹ and commas)
+                inr_str = match.group(1).replace(',', '')
+                try:
+                    inr_amount = float(inr_str)
+                    converted_amount = inr_amount * rate
+                    
+                    # Format converted amount appropriately
+                    if destination_currency == 'JPY':
+                        converted_str = f"{symbol}{converted_amount:,.0f}"
+                    else:
+                        converted_str = f"{symbol}{converted_amount:,.0f}"
+                        
+                    # Format INR amount with commas
+                    inr_formatted = f"{int(inr_amount):,}"
+                    return f"₹{inr_formatted} / {converted_str}"
+                except:
+                    return match.group(0)  # Return original if conversion fails
+            
+            # Apply conversion using regex
+            converted_results = re.sub(r'₹([\d,]+)', convert_price, raw_results)
+            
+            return converted_results
+            
+        except Exception as e:
+            self.logger.error(f"Fast currency conversion failed: {e}")
+            return raw_results  # Return original if conversion fails
+
+    @retry_on_overload(max_retries=3, initial_delay=2)
     def format_travel_results_with_prompt(self, raw_results: str, user_context: Dict[str, Any]) -> str:
         """
         Format travel search results using AI-powered prompt with Quick Insights.
@@ -525,7 +602,9 @@ class TripOptimizationAgent:
                 results_data = raw_results
             
             budget = user_context.get('budget', 'Not specified')
-            currency = user_context.get('currency', 'INR')  # Always use INR
+            currency = user_context.get('currency', 'INR')  # Base currency
+            destination_currency = user_context.get('destination_currency', 'INR')  # Destination currency
+            is_international = user_context.get('is_international', False)
             travelers = user_context.get('travelers', 1)
             preferred_mode = user_context.get('preferred_mode', 'any')
             
@@ -545,6 +624,12 @@ REQUIRED OUTPUT STRUCTURE:
             - Travelers: {travelers}
             - Preferred Transport: {preferred_mode}
             - Budget Priority: {user_context.get('budget_priority', 'moderate')}
+            - Origin: {user_context.get('origin', 'Not specified')}
+            - Destination: {user_context.get('destination', 'Not specified')}
+            - Origin Airport: {user_context.get('origin_airport', 'N/A')} (Distance: {user_context.get('origin_airport_distance', 0)} km)
+            - Destination Airport: {user_context.get('destination_airport', 'N/A')} (Distance: {user_context.get('destination_airport_distance', 0)} km)
+            - Is International Trip: {is_international}
+            - Destination Currency: {destination_currency}
             
             RAW RESULTS (Pre-structured for easy formatting):
             {json.dumps(results_data, indent=2)[:4000]}
@@ -583,24 +668,38 @@ REQUIRED OUTPUT STRUCTURE:
             
             TABLE FORMAT REQUIREMENTS:
             
+            CURRENCY DISPLAY RULES:
+            - For DOMESTIC trips (both locations in India): Display prices in INR only (₹10,698)
+            - For INTERNATIONAL trips: Display prices in BOTH currencies - INR and destination currency
+              * Format: "₹10,698 / AED 530" (for Dubai trips)
+              * Format: "₹10,698 / GBP 105" (for London trips)
+              * Format: "₹10,698 / USD 128" (for USA trips)
+              * Use approximate conversion rates for dual display
+            
             For FLIGHTS - Use this exact table structure:
             | # | Airline(s) | Departure | Arrival | Duration | Price/Person | Total ({travelers}p) |
             |---|------------|-----------|---------|----------|--------------|---------------------|
-            | 1 | Akasa Air  | 07:05     | 09:20   | 2h 15m   | ₹10,698     | ₹21,396            |
+            DOMESTIC: | 1 | Akasa Air  | 07:05     | 09:20   | 2h 15m   | ₹10,698     | ₹21,396            |
+            INTERNATIONAL: | 1 | Emirates  | 07:05     | 09:20   | 2h 15m   | ₹10,698 / AED 530     | ₹21,396 / AED 1,060            |
             
             For TRAINS - Use this exact table structure:
             | # | Train/Class | Departure | Arrival | Duration | Price/Person | Total ({travelers}p) | Platform |
             |---|-------------|-----------|---------|----------|--------------|---------------------|----------|
-            | 1 | Rajdhani 12951 (2A) | 17:00 | 08:35 | 15h 35m | ₹3,500 | ₹7,000 | IRCTC |
+            DOMESTIC: | 1 | Rajdhani 12951 (2A) | 17:00 | 08:35 | 15h 35m | ₹3,500 | ₹7,000 | IRCTC |
+            INTERNATIONAL: | 1 | Rajdhani 12951 (2A) | 17:00 | 08:35 | 15h 35m | ₹3,500 / AED 175 | ₹7,000 / AED 350 | IRCTC |
             
             For BUSES - Use this exact table structure:
             | # | Operator/Type | Departure | Arrival | Duration | Price/Person | Total ({travelers}p) | Platform |
             |---|---------------|-----------|---------|----------|--------------|---------------------|----------|
-            | 1 | VRL Travels (AC Sleeper) | 20:00 | 08:00 | 24h 30m | ₹2,000 | ₹4,000 | RedBus |
+            DOMESTIC: | 1 | VRL Travels (AC Sleeper) | 20:00 | 08:00 | 24h 30m | ₹2,000 | ₹4,000 | RedBus |
+            INTERNATIONAL: | 1 | VRL Travels (AC Sleeper) | 20:00 | 08:00 | 24h 30m | ₹2,000 / AED 100 | ₹4,000 / AED 200 | RedBus |
             
             FORMATTING RULES:
             - Convert duration_minutes to "Xh Ym" format (e.g., 135 → 2h 15m, 125 → 2h 5m)
-            - Format prices with currency symbol and commas (10698 → Rs.10,698)
+            - PRICE FORMATTING:
+              * DOMESTIC TRIPS: Format with INR only (10698 → ₹10,698)
+              * INTERNATIONAL TRIPS: Format with dual currency (10698 → ₹10,698 / AED 530)
+              * Use approximate conversion rates for destination currency
             - Calculate total cost = price_per_person × {travelers}
             - Extract time only from departure_time/arrival_time (e.g., "2025-12-01 07:05" → "07:05")
             - Use clear section headings with DATES
@@ -614,7 +713,9 @@ REQUIRED OUTPUT STRUCTURE:
             
             ## 📊 Quick Insights
             
-            🛫 **Cheapest Roundtrip**: [Airline] ([Direct/via connection]) — ₹[total_price] total/person
+            🛫 **Cheapest Roundtrip**: [Airline] ([Direct/via connection]) — Price format based on trip type:
+            - DOMESTIC: ₹[total_price] total/person
+            - INTERNATIONAL: ₹[total_price] / [DEST_CURRENCY] [converted_price] total/person
             
             ⏱️ **Shortest Travel Time**: [Airline] ([Direct/with connection]) — [duration] each way
             
@@ -632,6 +733,19 @@ REQUIRED OUTPUT STRUCTURE:
             
             ## Flight Options
             
+            **🧾 Nearest Airport Information (if applicable):**
+            Based on the USER CONTEXT airport distances, if either location has no direct airport (distance > 0), display clarification message:
+            
+            IF Origin Airport Distance > 0:
+            > "There are no airports in {user_context.get('origin')}; the nearest airport is [Airport Name] ({user_context.get('origin_airport')}), approximately {user_context.get('origin_airport_distance')} km away."
+            
+            IF Destination Airport Distance > 0:
+            > "There are no airports in {user_context.get('destination')}; the nearest airport is [Airport Name] ({user_context.get('destination_airport')}), approximately {user_context.get('destination_airport_distance')} km away."
+            
+            Display these clarification messages ABOVE the flight journey sections.
+            
+            CRITICAL: Only show nearest airport messages if distance > 0. For distance = 0, skip this message.
+            
             IF no flights available OR flight not suitable for route:
             ⚠️ **Flight not suitable for this route** (no direct airport connectivity)
             
@@ -645,6 +759,10 @@ REQUIRED OUTPUT STRUCTURE:
             ### << Return Journey (Destination to Origin) - Return Date
             [Clean markdown table with ALL flights from return_flights array]
             
+            **✈️ Flight Summary:** [1-2 line summary of recommended flight option with total roundtrip cost in appropriate currency format]
+            *DOMESTIC Example: "Recommended: IndiGo direct flights - ₹9,614 total roundtrip cost for {travelers} travelers. Best value with reliable timing and no layovers."*
+            *INTERNATIONAL Example: "Recommended: Emirates direct flights - ₹25,000 / AED 1,250 total roundtrip cost for {travelers} travelers. Best value with reliable timing and no layovers."*
+            
             ## Train Options (if available)
             ### >> Outbound Journey (Origin to Destination) - Departure Date
             [Format ground_transport.outbound_trains[] into table]
@@ -652,12 +770,20 @@ REQUIRED OUTPUT STRUCTURE:
             ### << Return Journey (Destination to Origin) - Return Date
             [Format ground_transport.return_trains[] into table]
             
+            **🚂 Train Summary:** [1-2 line summary of recommended train option with total roundtrip cost in appropriate currency format]
+            *DOMESTIC Example: "Recommended: Udyan Express 3A class - ₹6,400 total roundtrip cost for {travelers} travelers. Comfortable overnight journey with good connectivity."*
+            *INTERNATIONAL Example: "Recommended: Udyan Express 3A class - ₹6,400 / AED 320 total roundtrip cost for {travelers} travelers. Comfortable overnight journey with good connectivity."*
+            
             ## Bus Options (if available)
             ### >> Outbound Journey (Origin to Destination) - Departure Date
             [Format ground_transport.outbound_buses[] into table]
             
             ### << Return Journey (Destination to Origin) - Return Date
             [Format ground_transport.return_buses[] into table]
+            
+            **🚌 Bus Summary:** [1-2 line summary of recommended bus option with total roundtrip cost in appropriate currency format]
+            *DOMESTIC Example: "Recommended: VRL Travels Volvo AC - ₹4,000 total roundtrip cost for {travelers} travelers. Most economical option with decent comfort."*
+            *INTERNATIONAL Example: "Recommended: VRL Travels Volvo AC - ₹4,000 / AED 200 total roundtrip cost for {travelers} travelers. Most economical option with decent comfort."*
             
             ## Cost Summary & Recommendations
             | Transport Mode | Cheapest Option | Most Convenient | Best Value (*) |
@@ -672,6 +798,11 @@ REQUIRED OUTPUT STRUCTURE:
             """
             
             formatted_result = self._call_azure_openai(system_prompt, user_prompt, temperature=0.1)
+            
+            # Apply dual currency conversion for international trips
+            if is_international and destination_currency != "INR":
+                self.logger.info(f"Applying dual currency conversion: INR → {destination_currency}")
+                formatted_result = self.convert_prices_to_dual_currency(formatted_result, destination_currency)
             
             self.logger.info("Travel results formatted successfully")
             return formatted_result
@@ -760,9 +891,17 @@ REQUIRED OUTPUT STRUCTURE:
             user_context = {
                 'budget': params.budget_limit,
                 'currency': params.currency,
+                'destination_currency': params.destination_currency,
+                'is_international': params.is_international,
                 'travelers': params.travelers,
                 'preferred_mode': params.preferred_mode,
-                'budget_priority': params.budget_priority
+                'budget_priority': params.budget_priority,
+                'origin': params.origin,
+                'destination': params.destination,
+                'origin_airport': params.origin_airport,
+                'destination_airport': params.destination_airport,
+                'origin_airport_distance': getattr(params, 'origin_airport_distance', 0),
+                'destination_airport_distance': getattr(params, 'destination_airport_distance', 0)
             }
             
             try:
@@ -948,6 +1087,7 @@ Raw search results below:
                     "travelers": "number (extract from '3 people', '2 persons', default 1 if not mentioned)",
                     "budget_limit": "number (extract from '30000rs', 'budget 50k') or null if not mentioned",
                     "currency": "INR",
+                    "preference_type": "budget/mid-range/luxury (extract from 'budget hotels', 'luxury stay', 'premium accommodation' or infer from budget - budget<20000=budget, >50000=luxury, else=mid-range) - default 'mid-range'",
                     "transport_modes": ["bus", "train"] for domestic OR ["flight"] for international,
                     "preferred_mode": "bus/train/flight based on user preference and route type",
                     "trip_type": "round_trip or one_way",
@@ -963,7 +1103,8 @@ Raw search results below:
                     "to_location": "same as destination above",
                     "travelers": "same as travelers above",
                     "dietary_preferences": "veg and non-veg/veg only/non-veg only",
-                    "accommodation_preference": "budget/luxury based on query context"
+                    "accommodation_preference": "budget/luxury based on query context",
+                    "preference_type": "same as preference_type above (budget/mid-range/luxury)"
                 }},
                 "routing_order": ["travel", "accommodation", "itinerary"] - optimal sequence,
                 "budget_allocation": {{
@@ -1202,6 +1343,17 @@ Raw search results below:
             missing.append("departure location")
         if not destination or destination == "Not specified":
             missing.append("destination")
+        
+        # Date validation: return_date must be after departure_date
+        return_date = travel_params.get('return_date')
+        if return_date and departure_date:
+            try:
+                departure = datetime.strptime(departure_date, "%Y-%m-%d")
+                return_dt = datetime.strptime(return_date, "%Y-%m-%d")
+                if return_dt <= departure:
+                    missing.append("valid return date (must be after departure date)")
+            except ValueError:
+                missing.append("valid date format (expected YYYY-MM-DD)")
         
         return missing
     
@@ -1502,6 +1654,7 @@ Raw search results below:
                     'to_location': preferences.get('to_location', 'Not specified'),
                     'travelers': preferences.get('travelers', 1),
                     'dietary_preferences': preferences.get('dietary_preferences', 'veg and non-veg'),
+                    'preference_type': preferences.get('preference_type', 'mid-range'),  # Add preference_type from travel_params
                     'routing_order': routing_order,  # Use validated routing order
                     'budget_allocation': budget_allocation  # NEW: Include budget allocation from same call
                 }
@@ -1535,6 +1688,7 @@ Raw search results below:
             'to_location': 'Not specified',
             'travelers': 1,
             'dietary_preferences': 'veg and non-veg',
+            'preference_type': 'mid-range',  # Default preference type
             'routing_order': ["itinerary", "travel", "accommodation"],  # Travel NEVER last!
             'original_query': query  # Store original query for dynamic allocation
             # Note: budget_allocation will be calculated dynamically by Azure OpenAI
@@ -2085,6 +2239,7 @@ Suggest restaurants for various meal times and occasions."""
                     "adults": travelers,
                     "children": 0,
                     "currency": "INR",  # Always use INR for all destinations
+                    "preference_type": state.get("preference_type", "mid-range"),  # Add preference_type from state
                     # rating defaults to [7, 8, 9] in tool - no need to specify
                     "query": serp_query  # Simple query determined by Azure OpenAI
                 }
@@ -2485,6 +2640,33 @@ Suggest restaurants for various meal times and occasions."""
                 }
                 return  # Stop execution and wait for user input
             
+            # Validate date logic: return_date must be after departure_date
+            departure_date = travel_params.get('departure_date')
+            return_date = travel_params.get('return_date')
+            
+            if departure_date and return_date:
+                try:
+                    dep_date = datetime.strptime(departure_date, "%Y-%m-%d")
+                    ret_date = datetime.strptime(return_date, "%Y-%m-%d")
+                    
+                    if ret_date <= dep_date:
+                        yield {
+                            "status": "error",
+                            "step": "date_validation",
+                            "message": "❌ Return date must be after departure date",
+                            "data": {
+                                "departure_date": departure_date,
+                                "return_date": return_date,
+                                "error": "Return date must be after departure date"
+                            },
+                            "progress": 15
+                        }
+                        return  # Stop execution due to invalid dates
+                        
+                except ValueError as e:
+                    self.logger.warning(f"⚠️ Date parsing error: {e}")
+                    # Continue with execution if date parsing fails (dates might be in different format)
+            
             # Simple fallback - the AI should provide proper budget_allocation based on prompts
             budget_allocation = all_params.get('budget_allocation', {'travel': 0.33, 'accommodation': 0.33, 'itinerary': 0.34})
             tool_queries = all_params.get('tool_queries', {})
@@ -2577,6 +2759,30 @@ Suggest restaurants for various meal times and occasions."""
             self.logger.info(f"🔄 Routing Order: {tool_sequence}")
             self.logger.info("=" * 80)
             
+            # Pre-determine currency information for international trips
+            self._current_destination_currency = "INR"
+            self._current_is_international = False
+            
+            # Extract destination currency early for all tools
+            try:
+                if travel_params:
+                    temp_params = TravelSearchParams(
+                        origin=travel_params.get('origin', 'Delhi'),
+                        destination=travel_params.get('destination', 'Mumbai'),
+                        departure_date='2025-01-01',  # Placeholder
+                        return_date='2025-01-05',
+                        travelers=travel_params.get('travelers', 1),
+                        currency='INR'
+                    )
+                    
+                    resolved_params = self.resolve_airport_codes_and_currency(temp_params)
+                    self._current_destination_currency = resolved_params.destination_currency
+                    self._current_is_international = resolved_params.is_international
+                    
+                    self.logger.info(f"💱 Currency Info: Base=INR, Destination={self._current_destination_currency}, International={self._current_is_international}")
+            except Exception as e:
+                self.logger.warning(f"⚠️ Currency resolution failed: {e}")
+                
             for idx, tool in enumerate(tool_sequence):
                 current_progress = base_progress + (idx * progress_per_tool)
                 
@@ -2626,6 +2832,7 @@ Suggest restaurants for various meal times and occasions."""
                         "adults": travelers,
                         "children": 0,
                         "currency": travel_params.get('currency', 'INR'),
+                        "preference_type": travel_params.get('preference_type', 'mid-range'),  # Add preference_type from travel_params
                         "query": accommodation_query  # Use extracted clean query instead of generating new one
                     })
                 elif tool == "itinerary":
@@ -2649,17 +2856,19 @@ Suggest restaurants for various meal times and occasions."""
                     self.logger.info(f"  🚌 Transport Modes: {travel_params.get('transport_modes')}")
                     self.logger.info(f"  👥 Travelers: {travel_params.get('travelers')}")
                     
-                    # CRITICAL FIX: Resolve airport codes for international trips (like Streamlit does)
+                    # CRITICAL FIX: Resolve airport codes for ALL flights (domestic and international)
                     origin = travel_params.get('origin', 'Not specified')
                     destination = travel_params.get('destination', 'Not specified')
-                    is_international = not travel_params.get('is_domestic', True)
+                    transport_modes = travel_params.get('transport_modes', ['bus', 'train'])
                     
-                    # Resolve airport codes if international trip using existing method
+                    # Resolve airport codes if flight is in transport modes
                     origin_airport = None
                     destination_airport = None
-                    if is_international:
+                    destination_currency = 'INR'  # Default
+                    is_international = False  # Default
+                    if 'flight' in transport_modes:
                         try:
-                            # Use existing resolve_airport_codes_and_currency method
+                            # Always resolve airport codes for flights using existing method
                             temp_params = TravelSearchParams(
                                 origin=origin,
                                 destination=destination,
@@ -2669,19 +2878,26 @@ Suggest restaurants for various meal times and occasions."""
                                 travelers=travel_params.get('travelers', 1),
                                 budget_limit=50000,
                                 currency='INR',
+                                preference_type=travel_params.get('preference_type', 'mid-range'),
                                 trip_type='round_trip'
                             )
                             
                             resolved_params = self.resolve_airport_codes_and_currency(temp_params)
                             origin_airport = resolved_params.origin_airport
                             destination_airport = resolved_params.destination_airport
+                            destination_currency = resolved_params.destination_currency  # Extract destination currency
+                            is_international = resolved_params.is_international
                             
                             self.logger.info(f"🌍 Airport Code Resolution: {origin} → {origin_airport}, {destination} → {destination_airport}")
+                            self.logger.info(f"💱 Currency Resolution: Base={resolved_params.currency}, Destination={destination_currency}")
                             
                         except Exception as e:
                             self.logger.warning(f"⚠️ Airport code resolution failed: {e}")
+                            destination_currency = 'INR'  # Fallback
+                            is_international = False
                     
-                    # For international trips, ensure sufficient budget for flight availability
+                    # Calculate appropriate budget for travel mode
+                    is_international = not travel_params.get('is_domestic', True)
                     total_budget = travel_params.get('budget_limit', 50000)
                     
                     if is_international and tool == "travel":
@@ -2709,15 +2925,17 @@ Suggest restaurants for various meal times and occasions."""
                             "travelers": travel_params.get('travelers', 1),
                             "budget_limit": effective_budget,
                             "currency": travel_params.get('currency', 'INR'),
+                            "destination_currency": destination_currency,  # Pass destination currency
                             "trip_type": travel_params.get('trip_type', 'round_trip'),
-                            "is_domestic": travel_params.get('is_domestic', True)
+                            "is_domestic": travel_params.get('is_domestic', True),
+                            "is_international": is_international  # Pass international flag
                         }
                         
-                        # Add airport codes if resolved (critical for international flights)
-                        if origin_airport and origin_airport != origin:
+                        # Always add airport codes if resolved (required for SERP API)
+                        if origin_airport:
                             search_params["origin_airport"] = origin_airport
                             self.logger.info(f"  ✈️ Origin Airport: {origin_airport}")
-                        if destination_airport and destination_airport != destination:
+                        if destination_airport:
                             search_params["destination_airport"] = destination_airport
                             self.logger.info(f"  ✈️ Destination Airport: {destination_airport}")
                         
@@ -2781,11 +2999,22 @@ Suggest restaurants for various meal times and occasions."""
                 else:
                     display_query = tool_query  # Fallback to old query
                 
+                # Apply dual currency conversion for international trips ONLY
+                final_result = result
+                if (hasattr(self, '_current_destination_currency') and hasattr(self, '_current_is_international') and 
+                    self._current_is_international and self._current_destination_currency != "INR"):
+                    self.logger.info(f"🔄 Applying dual currency conversion for {tool}: INR → {self._current_destination_currency}")
+                    final_result = self.convert_prices_to_dual_currency(result, self._current_destination_currency)
+                elif hasattr(self, '_current_is_international') and not self._current_is_international:
+                    self.logger.info(f"🏠 Domestic trip detected for {tool} - skipping currency conversion")
+                else:
+                    self.logger.info(f"💱 Currency conversion skipped for {tool} - no international destination detected")
+                
                 yield {
                     "status": "completed",
                     "step": tool,
                     "message": f"✅ {tool.capitalize()} results ready",
-                    "data": result,
+                    "data": final_result,
                     "query": display_query,  # Use clean extracted query for visibility
                     "budget_info": {
                         "allocated": f"₹{allocated_budget:,.0f}",

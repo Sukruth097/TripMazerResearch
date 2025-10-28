@@ -27,6 +27,8 @@ class TravelSearchParams:
     # Budget & Currency
     budget_limit: Optional[float] = None
     currency: str = "INR"
+    currency_symbol: str = "₹"
+    destination_currency: str = "INR"  # Currency for destination (e.g., AED for Dubai, GBP for London)
     
     # Transport Preferences
     transport_modes: List[str] = None  # ["flight", "bus", "train"]
@@ -40,6 +42,7 @@ class TravelSearchParams:
     # User Preferences
     budget_priority: str = "moderate"  # "tight", "moderate", "flexible"
     time_sensitivity: str = "flexible"  # "urgent", "moderate", "flexible"
+    preference_type: str = "mid-range"  # "budget", "mid-range", "luxury" for accommodation preferences
     
     # Provider Instructions (for agent to specify)
     use_serp_for_flights: bool = True
@@ -75,6 +78,7 @@ class TravelSearchParams:
             'travelers': data.get('travelers', 1),
             'budget_limit': data.get('budget_limit'),
             'currency': data.get('currency', 'INR'),
+            'currency_symbol': data.get('currency_symbol', '₹'),
             'transport_modes': data.get('transport_modes') or ["flight", "bus", "train"],
             'preferred_mode': data.get('preferred_mode'),
             'trip_type': data.get('trip_type', 'round_trip'),
@@ -82,6 +86,7 @@ class TravelSearchParams:
             'is_international': data.get('is_international', False),
             'budget_priority': data.get('budget_priority', 'moderate'),
             'time_sensitivity': data.get('time_sensitivity', 'flexible'),
+            'preference_type': data.get('preference_type', 'mid-range'),
             'use_serp_for_flights': data.get('use_serp_for_flights', True),
             'use_perplexity_for_ground': data.get('use_perplexity_for_ground', True),
             'origin_airport': data.get('origin_airport'),
@@ -108,6 +113,17 @@ class TravelSearchParams:
             errors.append("Number of travelers must be positive")
         if self.transport_modes is None or len(self.transport_modes) == 0:
             errors.append("At least one transport mode is required")
+        
+        # Date validation: return_date must be after departure_date
+        if self.return_date and self.departure_date:
+            try:
+                from datetime import datetime
+                departure = datetime.strptime(self.departure_date, "%Y-%m-%d")
+                return_date = datetime.strptime(self.return_date, "%Y-%m-%d")
+                if return_date <= departure:
+                    errors.append("Return date must be after departure date")
+            except ValueError:
+                errors.append("Invalid date format (expected YYYY-MM-DD)")
         
         return errors
     

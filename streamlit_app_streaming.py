@@ -44,27 +44,15 @@ def display_preferences_result(data: dict):
         st.metric("Dates", data.get('dates', 'Not specified'))
         st.metric("Currency", data.get('currency', 'INR'))
     
-    with st.expander("📊 Budget Allocation", expanded=True):
-        alloc = data.get('budget_allocation')
-        if alloc and isinstance(alloc, dict):
-            for tool, percentage in alloc.items():
-                st.write(f"**{tool.capitalize()}**: {percentage*100:.1f}%")
-        else:
-            st.write("Budget allocation will be calculated...")
+    # Display accommodation preference if available
+    preference_type = data.get('preference_type')
+    if preference_type:
+        st.info(f"🏨 **Accommodation Preference**: {preference_type.title()}")
     
-    with st.expander("🔄 Tool Execution Order", expanded=True):
+    with st.expander(" Tool Execution Order", expanded=True):
         routing = data.get('routing_order', [])
         for idx, tool in enumerate(routing, 1):
             st.write(f"{idx}. {tool.capitalize()}")
-
-
-def display_budget_result(data: dict):
-    """Display budget allocation."""
-    st.success("✅ Budget Allocated")
-    
-    cols = st.columns(len(data))
-    for col, (tool, amount) in zip(cols, data.items()):
-        col.metric(tool.capitalize(), amount)
 
 
 def display_tool_result(tool: str, data: str, budget_info: dict = None, query: str = None):
@@ -135,8 +123,8 @@ def streaming_trip_planner():
                             display_preferences_result(data)
                     
                     elif step == "budget":
-                        with budget_container:
-                            display_budget_result(data)
+                        # Budget allocation removed as requested
+                        pass
                     
                     elif step in ["itinerary", "travel", "accommodation"]:
                         with results_container:
@@ -176,26 +164,37 @@ def accommodations_section():
     with col1:
         destination = st.text_input("🌍 Destination", placeholder="e.g., Goa, Mumbai, Dubai")
         checkin_date = st.date_input("📅 Check-in Date")
+        budget = st.number_input("💰 Budget per Night (₹)", min_value=500, max_value=50000, value=3000, step=500, help="Budget per night for accommodation")
     
     with col2:
         guests = st.number_input("👥 Number of Guests", min_value=1, max_value=20, value=2)
         checkout_date = st.date_input("📅 Check-out Date")
-    
-    accommodation_type = st.selectbox(
-        "🏨 Accommodation Type",
-        ["Budget (Hotels & Hostels)", "Luxury (Premium Hotels)"]
-    )
+        accommodation_type = st.selectbox(
+            "🏨 Accommodation Type",
+            ["Budget (Hotels & Hostels)", "Mid-Range (Comfortable Hotels)", "Luxury (Premium Hotels)"]
+        )
     
     if st.button("🏨 Search Hotels", type="primary", use_container_width=True):
         if destination:
+            # Date validation
+            if checkout_date <= checkin_date:
+                st.error("❌ Check-out date must be after check-in date")
+                return
+                
             with st.spinner("🔄 Searching hotels..."):
                 try:
                     check_in_str = checkin_date.strftime('%Y-%m-%d')
                     check_out_str = checkout_date.strftime('%Y-%m-%d')
                     
+                    # Map UI selection to preference_type
                     if accommodation_type == "Luxury (Premium Hotels)":
+                        preference_type = "luxury"
                         serp_query = f"Luxury hotels in {destination}"
-                    else:
+                    elif accommodation_type == "Mid-Range (Comfortable Hotels)":
+                        preference_type = "mid-range"
+                        serp_query = f"Mid-range hotels in {destination}"
+                    else:  # Budget
+                        preference_type = "budget"
                         serp_query = f"Budget hotels and hostels in {destination}"
                     
                     results = search_accommodations.invoke({
@@ -205,6 +204,8 @@ def accommodations_section():
                         "adults": guests,
                         "children": 0,
                         "currency": "INR",
+                        "budget_per_night": budget,  # Correct parameter name
+                        "preference_type": preference_type,  # Add preference_type parameter
                         "query": serp_query
                     })
                     
@@ -374,8 +375,6 @@ There are no airports in this location; the nearest airport is Tirupati (TIR), a
 If the city has its own airport, skip this line and display results normally.
 """
 
-
-
         response = client.models.generate_content(
             model="gemini-2.0-flash",
             contents=prompt
@@ -423,6 +422,11 @@ def travel_section():
     
     if st.button("🔍 Search Travel Options", type="primary", use_container_width=True):
         if origin and destination_travel:
+            # Date validation
+            if return_date and return_date <= departure_date:
+                st.error("❌ Return date must be after departure date")
+                return
+                
             with st.spinner("🔄 Searching travel options..."):
                 try:
                     # Simple logic to detect international routes

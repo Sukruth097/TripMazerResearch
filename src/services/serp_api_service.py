@@ -295,8 +295,8 @@ if __name__ == "__main__":
     try:
         advanced_flights = serp_service.search_flights(
             departure_id="BLR",  # Goa
-            arrival_id="HYD",    # Mumbai
-            outbound_date="2025-10-30",
+            arrival_id="DXB",    # Mumbai
+            outbound_date="2025-12-30",
             country_code="in",   # India (mandatory)
             currency="INR",      # Currency (mandatory)
             language="en",       # Optional, defaults to 'en'
