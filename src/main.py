@@ -673,18 +673,20 @@ def accommodations_section():
         checkout_date = st.date_input("Check-out Date", value=default_checkout, min_value=date.today())
         guests = st.number_input("Number of Guests", min_value=1, max_value=10, value=default_guests)
         
-        # Accommodation preference: Budget or Luxury (determines SERP query)
+        # Accommodation preference: Budget, Mid-Range, or Luxury (determines SERP query)
         st.markdown("**Accommodation Preference**")
         accommodation_type = st.radio(
             "Select preference:",
-            ["Budget (Hotels & Hostels)", "Luxury (Premium Hotels)"],
-            help="Budget: Affordable hotels, hostels, and budget accommodations\nLuxury: Premium hotels, resorts, and high-end properties",
+            ["Budget (Hotels & Hostels)", "Mid-Range (Comfortable Hotels)", "Luxury (Premium Hotels)"],
+            help="Budget: Affordable hotels, hostels, and budget accommodations\nMid-Range: Comfortable hotels with good amenities\nLuxury: Premium hotels, resorts, and high-end properties",
             label_visibility="collapsed"
         )
         
         # Info about what user will get
         if accommodation_type == "Budget (Hotels & Hostels)":
             st.info("🏨 **Budget Search:** Searching for affordable hotels, hostels, and budget-friendly accommodations with best value for money.")
+        elif accommodation_type == "Mid-Range (Comfortable Hotels)":
+            st.info("🏨 **Mid-Range Search:** Searching for comfortable hotels with good amenities and moderate pricing.")
         else:
             st.info("✨ **Luxury Search:** Searching for premium hotels, resorts, and high-end properties with top amenities and services.")
     
@@ -710,11 +712,16 @@ def accommodations_section():
                     # Always use INR for all destinations
                     currency = "INR"
                     
-                    # Construct simple SERP query based on accommodation type
+                    # Map UI selection to preference_type and construct SERP query
                     # CRITICAL: SERP API fails with detailed queries - keep it simple!
                     if accommodation_type == "Luxury (Premium Hotels)":
+                        preference_type = "luxury"
                         serp_query = f"Luxury hotels in {destination}"
-                    else:
+                    elif accommodation_type == "Mid-Range (Comfortable Hotels)":
+                        preference_type = "mid-range"
+                        serp_query = f"Mid-range hotels in {destination}"
+                    else:  # Budget
+                        preference_type = "budget"
                         serp_query = f"Budget hotels and hostels in {destination}"
                     
                     # Call tool with structured parameters
@@ -726,8 +733,9 @@ def accommodations_section():
                         "adults": guests,
                         "children": 0,
                         "currency": currency,
+                        "preference_type": preference_type,  # Add preference_type parameter
                         # rating defaults to [7, 8, 9] in tool
-                        "query": serp_query  # Simple query: "Budget hotels and hostels in X" or "Luxury hotels in X"
+                        "query": serp_query  # Simple query: "Budget hotels and hostels in X", "Mid-range hotels in X", or "Luxury hotels in X"
                     })
                     
                     st.success("✅ Hotels found via Google Hotels API!")

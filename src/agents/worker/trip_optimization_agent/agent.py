@@ -201,10 +201,10 @@ class TripOptimizationAgent:
     @retry_on_overload(max_retries=3, initial_delay=2)
     def extract_travel_parameters_with_azure_openai(self, query: str) -> TravelSearchParams:
         """
-        Extract travel search parameters using Azure OpenAI.
+        Extract travel search parameters using the comprehensive extraction method.
         
-        This method handles the parameter extraction that was previously done in tools.
-        Now the agent takes responsibility for AI-powered parameter extraction.
+        This method now uses the same comprehensive extraction as the streaming flow
+        to reduce LLM calls and ensure consistency.
         
         Args:
             query: Natural language travel query
@@ -212,115 +212,52 @@ class TripOptimizationAgent:
         Returns:
             TravelSearchParams entity with extracted parameters
         """
-        self.logger.info("Extracting travel parameters with Azure OpenAI...")
+        self.logger.info("Extracting travel parameters using comprehensive method...")
         
         try:
-            system_prompt = """You are a travel parameter extraction expert. Extract travel search parameters from natural language queries and return them as valid JSON."""
+            # Use the comprehensive extraction method (same as streaming flow)
+            all_params = self._extract_complete_trip_parameters(query, conversation_history=None)
             
-            user_prompt = f"""
-            TASK: Extract travel search parameters from natural language query.
+            # Check if query was identified as non-travel
+            if all_params.get("error") == "non_travel_query":
+                self.logger.warning("Non-travel query detected")
+                # Return fallback params for non-travel queries
+                return TravelSearchParams(
+                    origin="Not specified",
+                    destination="Not specified", 
+                    departure_date="2025-12-01",
+                    return_date="2025-12-05",
+                    transport_modes=["flight", "bus", "train"],
+                    travelers=1,
+                    currency="INR",
+                    budget_limit=50000,
+                    preference_type="mid-range",
+                    trip_type="round_trip",
+                    is_domestic=True
+                )
             
-            QUERY: "{query}"
+            # Extract travel_params from comprehensive result
+            travel_params = all_params.get('travel_params', {})
             
-            CRITICAL: Always provide valid values for departure_date and budget_limit. Never return null/None for these fields.
+            # Create TravelSearchParams entity from extracted data
+            params = TravelSearchParams.from_dict(travel_params)
             
-            Extract the following parameters and return as JSON:
-            
-            {{
-                "origin": "departure city/location (extract from phrases like 'from X', 'starting from X', 'Bangalore to')",
-                "destination": "arrival city/location (extract from phrases like 'to X', 'destination X', 'to Coorg')", 
-                "departure_date": "YYYY-MM-DD format (convert dates like 25-10-25 to 2025-10-25) - REQUIRED, use 2025-12-01 if not specified",
-                "return_date": "YYYY-MM-DD format or null for one-way (calculate from trip duration)",
-                "travelers": "number of travelers (extract from '3 people', '2 persons', etc.)",
-                "budget_limit": "budget amount (number only) or null if not mentioned (extract from '30000rs', 'budget 50k', etc.)",
-                "currency": "INR for all destinations (always use INR)",
-                "transport_modes": ["flight", "bus", "train"] - extract from user preference (buses → ["bus", "train"], flights → ["flight"]),
-                "preferred_mode": "user's preferred transport mode or null (extract 'prefer buses' → 'bus')",
-                "trip_type": "round_trip or one_way",
-                "is_domestic": true/false,
-                "budget_priority": "tight/moderate/flexible (extract from 'budget stays', 'cheap', 'economical' → tight)",
-                "time_sensitivity": "urgent/moderate/flexible"
-            }}
-            
-            EXTRACTION RULES:
-            1. **Locations**: 
-               - "Bangalore to Coorg" → origin="Bangalore", destination="Coorg"
-               - "Plan a trip to Delhi" → origin="Not specified", destination="Delhi"
-            2. **Dates (NEVER null)**: 
-               - "25-10-25 to 29-10-25" → departure_date="2025-10-25", return_date="2025-10-29"
-               - "from 25-10-25 to 29-10-25" → departure_date="2025-10-25", return_date="2025-10-29"
-               - "from 1st Dec to 5th Dec 2025" → departure_date="2025-12-01", return_date="2025-12-05"
-               - CRITICAL: Extract exact dates from query, don't use fallback dates unless NO dates mentioned
-               - If no date mentioned → departure_date="2025-12-01"
-            3. **Budget (can be null)**:
-               - "30000rs", "30k", "budget 30000" → budget_limit=30000
-               - If no budget mentioned → budget_limit=null (let interactive system ask user)
-            4. **Transport**:
-               - "prefer buses" → transport_modes=["bus", "train"], preferred_mode="bus"
-               - "flight only" → transport_modes=["flight"]
-               - Not mentioned → transport_modes=["flight", "bus", "train"]
-            5. **Travelers**:
-               - "3 people", "2 persons", "family of 4" → extract exact number
-            6. Always set currency="INR" regardless of destination
-            7. Calculate is_domestic based on Indian cities (Bangalore, Coorg, Delhi, Mumbai, etc.)
-            
-            EXAMPLE:
-            Query: "Plan a trip to bangalore to coorg for 3 people and budget is 30000rs for 4 days from 25-10-25 to 29-10-25 we prefer buses"
-            Output: {{
-                "origin": "Bangalore",
-                "destination": "Coorg",
-                "departure_date": "2025-10-25",
-                "return_date": "2025-10-29",
-                "travelers": 3,
-                "budget_limit": 30000,
-                "currency": "INR",
-                "transport_modes": ["bus", "train"],
-                "preferred_mode": "bus",
-                "trip_type": "round_trip",
-                "is_domestic": true,
-                "budget_priority": "tight",
-                "time_sensitivity": "flexible"
-            }}
-            
-            REMEMBER: departure_date and budget_limit must NEVER be null. Always provide valid values.
-            
-            Return ONLY valid JSON.
-            """
-            
-            response_text = self._call_azure_openai(system_prompt, user_prompt, temperature=0.1)
-            
-            self.logger.info(f"📋 RAW Azure OpenAI response: {response_text[:500]}...")
-            
-            # Clean response
-            if response_text.startswith('```json'):
-                response_text = response_text.replace('```json', '').replace('```', '').strip()
-            elif response_text.startswith('```'):
-                response_text = response_text.replace('```', '').strip()
-            
-            # Parse response
-            extracted_data = json.loads(response_text)
-            
-            # No fallbacks - let interactive system handle missing parameters
-            self.logger.info(f"✅ Extracted parameters: {extracted_data}")
-            
-            # Create TravelSearchParams entity
-            params = TravelSearchParams.from_dict(extracted_data)
-            
-            self.logger.info(f"✅ Extracted parameters: {extracted_data}")
+            self.logger.info(f"✅ Extracted parameters using comprehensive method: {travel_params}")
             return params
             
         except Exception as e:
-            self.logger.error(f"Parameter extraction failed: {e}")
+            self.logger.error(f"Comprehensive parameter extraction failed: {e}")
             # Fallback to basic parameters with valid values
             fallback_params = TravelSearchParams(
                 origin="Not specified",
                 destination="Not specified", 
-                departure_date="2025-12-01",  # Valid date
-                return_date="2025-12-05",     # Valid return date
+                departure_date="2025-12-01",
+                return_date="2025-12-05",
                 transport_modes=["flight", "bus", "train"],
                 travelers=1,
-                currency="INR",  # Always use INR
-                budget_limit=50000,  # Higher fallback budget to accommodate potential international trips
+                currency="INR",
+                budget_limit=50000,
+                preference_type="mid-range",
                 trip_type="round_trip",
                 is_domestic=True
             )
@@ -948,6 +885,7 @@ Raw search results below:
                     "travelers": "number (extract from '3 people', '2 persons', default 1 if not mentioned)",
                     "budget_limit": "number (extract from '30000rs', 'budget 50k') or null if not mentioned",
                     "currency": "INR",
+                    "preference_type": "budget/mid-range/luxury (extract from 'budget hotels', 'luxury stay', 'premium accommodation' or infer from budget - budget<20000=budget, >50000=luxury, else=mid-range) - default 'mid-range'",
                     "transport_modes": ["bus", "train"] for domestic OR ["flight"] for international,
                     "preferred_mode": "bus/train/flight based on user preference and route type",
                     "trip_type": "round_trip or one_way",
@@ -963,7 +901,8 @@ Raw search results below:
                     "to_location": "same as destination above",
                     "travelers": "same as travelers above",
                     "dietary_preferences": "veg and non-veg/veg only/non-veg only",
-                    "accommodation_preference": "budget/luxury based on query context"
+                    "accommodation_preference": "budget/luxury based on query context",
+                    "preference_type": "same as preference_type above (budget/mid-range/luxury)"
                 }},
                 "routing_order": ["travel", "accommodation", "itinerary"] - optimal sequence,
                 "budget_allocation": {{
@@ -1502,6 +1441,7 @@ Raw search results below:
                     'to_location': preferences.get('to_location', 'Not specified'),
                     'travelers': preferences.get('travelers', 1),
                     'dietary_preferences': preferences.get('dietary_preferences', 'veg and non-veg'),
+                    'preference_type': preferences.get('preference_type', 'mid-range'),  # Add preference_type from travel_params
                     'routing_order': routing_order,  # Use validated routing order
                     'budget_allocation': budget_allocation  # NEW: Include budget allocation from same call
                 }
@@ -1535,6 +1475,7 @@ Raw search results below:
             'to_location': 'Not specified',
             'travelers': 1,
             'dietary_preferences': 'veg and non-veg',
+            'preference_type': 'mid-range',  # Default preference type
             'routing_order': ["itinerary", "travel", "accommodation"],  # Travel NEVER last!
             'original_query': query  # Store original query for dynamic allocation
             # Note: budget_allocation will be calculated dynamically by Azure OpenAI
@@ -2085,6 +2026,7 @@ Suggest restaurants for various meal times and occasions."""
                     "adults": travelers,
                     "children": 0,
                     "currency": "INR",  # Always use INR for all destinations
+                    "preference_type": state.get("preference_type", "mid-range"),  # Add preference_type from state
                     # rating defaults to [7, 8, 9] in tool - no need to specify
                     "query": serp_query  # Simple query determined by Azure OpenAI
                 }
@@ -2626,6 +2568,7 @@ Suggest restaurants for various meal times and occasions."""
                         "adults": travelers,
                         "children": 0,
                         "currency": travel_params.get('currency', 'INR'),
+                        "preference_type": travel_params.get('preference_type', 'mid-range'),  # Add preference_type from travel_params
                         "query": accommodation_query  # Use extracted clean query instead of generating new one
                     })
                 elif tool == "itinerary":
@@ -2669,6 +2612,7 @@ Suggest restaurants for various meal times and occasions."""
                                 travelers=travel_params.get('travelers', 1),
                                 budget_limit=50000,
                                 currency='INR',
+                                preference_type=travel_params.get('preference_type', 'mid-range'),  # Add preference_type
                                 trip_type='round_trip'
                             )
                             
