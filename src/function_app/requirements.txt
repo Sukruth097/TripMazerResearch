@@ -11,12 +11,12 @@ dataclasses-json>=0.6.0
 python-dotenv>=1.0.0
 fastapi>=0.100.0
 google-genai
-openai==2.6.0
 uvicorn[standard]>=0.20.0
 python-multipart>=0.0.6
 azure-functions>=1.18.0
 google-search-results==2.4.2
-streamlit==1.38.0
+# Azure specific dependencies (for Key Vault and monitoring)
 azure-identity>=1.12.0
-azure-keyvault-secrets>=4.6.0
+azure-keyvault-secrets>=4.7.0
 azure-monitor-opentelemetry>=1.0.0
+opencensus-ext-azure>=1.1.0

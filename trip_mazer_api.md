@@ -1,5 +1,44 @@
+<<<<<<< HEAD
 # Trip mazer API approach
 
+=======
+# TripOptimizer Agent approach
+    USER QUERY
+        ↓
+┌───────────────────────────┐
+│  1. INPUT PROCESSOR       │ → Gemini extracts preferences
+└───────────────────────────┘
+        ↓
+┌───────────────────────────┐
+│  2. BUDGET ALLOCATOR      │ → Gemini allocates budget %
+└───────────────────────────┘
+        ↓
+    ┌───────────────────────┐
+    │  3. TOOL EXECUTOR     │ ← LOOPS HERE
+    │  (Itinerary/Travel/   │
+    │   Accommodation)      │
+    └───────────────────────┘
+        ↓
+┌───────────────────────────┐
+│  4. BUDGET TRACKER        │ → Track & reallocate
+└───────────────────────────┘
+        ↓
+    ┌─────────────┐
+    │  Continue?  │ ─Yes─→ (back to TOOL EXECUTOR)
+    └─────────────┘
+        │ No
+        ↓
+┌───────────────────────────┐
+│  6. RESULT COMBINER       │ → Combine all results
+└───────────────────────────┘
+        ↓
+┌───────────────────────────┐
+│  7. OUTPUT FORMATTER      │ → Format final output
+└───────────────────────────┘
+        ↓
+    FINAL RESULT
+    
+>>>>>>> 078ec68ad362ca731e95f2d1ef55f86784d3abae
 ## Contents
 
 - [MakeMyTrip API](https://mybiz.makemytrip.com/integrated-travel-solutions/travel-request-api?ef_id=Cj0KCQjwwZDFBhCpARIsAB95qO1Zjq0vB1EfOHHFP5K3ZWhhTHQ69j-7nDpmKShQHChFcXNfk7XldpIaAiysEALw_wcB:G:s&gad_source=1&gad_campaignid=20574983470&gbraid=0AAAAADI4eVPGqdPjNExcBwOS6_1B7naOt&gclid=Cj0KCQjwwZDFBhCpARIsAB95qO1Zjq0vB1EfOHHFP5K3ZWhhTHQ69j-7nDpmKShQHChFcXNfk7XldpIaAiysEALw_wcB)

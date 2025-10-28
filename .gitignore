@@ -205,3 +205,10 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+<<<<<<< HEAD
+=======
+
+.python_packages
+.vscode
+local.settings.json
+>>>>>>> 078ec68ad362ca731e95f2d1ef55f86784d3abae
