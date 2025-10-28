@@ -32,7 +32,8 @@ class PerplexityService:
         query: str,
         system_prompt: str = "You are a helpful assistant that provides accurate, up-to-date information with citations when possible.",
         temperature: float = 0.1,
-        model: str = "sonar-pro",
+        model: str = "sonar",
+        search_context_size = "medium",
         search_domain_filter: Optional[Union[str, Iterator[str]]] = None
     ) -> Dict[str, Any]:
         """
@@ -57,7 +58,8 @@ class PerplexityService:
                 "messages": [
                     {"role": "user", "content": combined_content}
                 ],
-                "search_domain_filter" : search_domain_filter
+                "search_context_size": search_context_size,
+                "search_domain_filter": search_domain_filter
             }
             
             headers = {
