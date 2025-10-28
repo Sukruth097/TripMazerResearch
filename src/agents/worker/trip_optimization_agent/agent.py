@@ -501,6 +501,7 @@ class TripOptimizationAgent:
     def convert_prices_to_dual_currency(self, raw_results: str, destination_currency: str) -> str:
         """
         Convert prices in travel results to show dual currency for international trips.
+        Uses fast regex-based conversion with pre-defined exchange rates for speed.
         
         Args:
             raw_results: Raw results containing prices in original currency
@@ -515,43 +516,62 @@ class TripOptimizationAgent:
         self.logger.info(f"Converting prices to dual currency: INR + {destination_currency}")
         
         try:
-            system_prompt = """You are a currency conversion expert. Convert all monetary amounts in travel results to show dual currency pricing (INR + destination currency) using current exchange rates. Return ONLY the converted content, no explanations or prompts."""
+            import re
             
-            user_prompt = f"""
-            Convert all ₹ amounts to show dual currency format: ₹X,XXX / {destination_currency} Y,YYY
+            # Fast conversion rates (approximate, updated regularly)
+            conversion_rates = {
+                'AED': 0.045,   # 1 INR ≈ 0.045 AED
+                'USD': 0.012,   # 1 INR ≈ 0.012 USD  
+                'GBP': 0.0095,  # 1 INR ≈ 0.0095 GBP
+                'EUR': 0.011,   # 1 INR ≈ 0.011 EUR
+                'SGD': 0.016,   # 1 INR ≈ 0.016 SGD
+                'THB': 0.42,    # 1 INR ≈ 0.42 THB
+                'MYR': 0.053,   # 1 INR ≈ 0.053 MYR
+                'JPY': 1.8,     # 1 INR ≈ 1.8 JPY
+            }
             
-            TARGET: {destination_currency}
-            SYMBOLS: AED="AED ", USD="$", GBP="£", EUR="€", SGD="S$", THB="฿", MYR="RM", JPY="¥"
+            # Currency symbols
+            currency_symbols = {
+                'AED': 'AED ',
+                'USD': '$',
+                'GBP': '£', 
+                'EUR': '€',
+                'SGD': 'S$',
+                'THB': '฿',
+                'MYR': 'RM',
+                'JPY': '¥'
+            }
             
-            CONTENT TO CONVERT:
-            {raw_results}
+            rate = conversion_rates.get(destination_currency, 0.012)
+            symbol = currency_symbols.get(destination_currency, destination_currency + ' ')
             
-            IMPORTANT: Return ONLY the converted content with dual currency pricing. Do not include this prompt or any explanations.
-            """
+            # Fast regex replacement for all ₹X,XXX patterns
+            def convert_price(match):
+                # Extract the numeric value (remove ₹ and commas)
+                inr_str = match.group(1).replace(',', '')
+                try:
+                    inr_amount = float(inr_str)
+                    converted_amount = inr_amount * rate
+                    
+                    # Format converted amount appropriately
+                    if destination_currency == 'JPY':
+                        converted_str = f"{symbol}{converted_amount:,.0f}"
+                    else:
+                        converted_str = f"{symbol}{converted_amount:,.0f}"
+                        
+                    # Format INR amount with commas
+                    inr_formatted = f"{int(inr_amount):,}"
+                    return f"₹{inr_formatted} / {converted_str}"
+                except:
+                    return match.group(0)  # Return original if conversion fails
             
-            converted_results = self._call_azure_openai(system_prompt, user_prompt, temperature=0.1)
+            # Apply conversion using regex
+            converted_results = re.sub(r'₹([\d,]+)', convert_price, raw_results)
             
-            # Clean up the response to ensure no prompt text is included
-            if "CONTENT TO CONVERT:" in converted_results:
-                # If the prompt got included, extract only the converted content
-                parts = converted_results.split("CONTENT TO CONVERT:")
-                if len(parts) > 1:
-                    converted_results = parts[1].strip()
-            
-            # Remove any remaining prompt artifacts
-            converted_results = converted_results.replace("IMPORTANT: Return ONLY", "").strip()
-            converted_results = converted_results.replace("TARGET:", "").strip()
-            converted_results = converted_results.replace("SYMBOLS:", "").strip()
-            
-            # If result is suspiciously short or looks like an error, return original
-            if len(converted_results) < len(raw_results) * 0.5:
-                self.logger.warning("Currency conversion result too short, using original")
-                return raw_results
-                
             return converted_results
             
         except Exception as e:
-            self.logger.error(f"Currency conversion failed: {e}")
+            self.logger.error(f"Fast currency conversion failed: {e}")
             return raw_results  # Return original if conversion fails
 
     @retry_on_overload(max_retries=3, initial_delay=2)
@@ -2979,12 +2999,16 @@ Suggest restaurants for various meal times and occasions."""
                 else:
                     display_query = tool_query  # Fallback to old query
                 
-                # Apply dual currency conversion for international trips
+                # Apply dual currency conversion for international trips ONLY
                 final_result = result
-                if hasattr(self, '_current_destination_currency') and hasattr(self, '_current_is_international'):
-                    if self._current_is_international and self._current_destination_currency != "INR":
-                        self.logger.info(f"🔄 Applying dual currency conversion for {tool}: INR → {self._current_destination_currency}")
-                        final_result = self.convert_prices_to_dual_currency(result, self._current_destination_currency)
+                if (hasattr(self, '_current_destination_currency') and hasattr(self, '_current_is_international') and 
+                    self._current_is_international and self._current_destination_currency != "INR"):
+                    self.logger.info(f"🔄 Applying dual currency conversion for {tool}: INR → {self._current_destination_currency}")
+                    final_result = self.convert_prices_to_dual_currency(result, self._current_destination_currency)
+                elif hasattr(self, '_current_is_international') and not self._current_is_international:
+                    self.logger.info(f"🏠 Domestic trip detected for {tool} - skipping currency conversion")
+                else:
+                    self.logger.info(f"💱 Currency conversion skipped for {tool} - no international destination detected")
                 
                 yield {
                     "status": "completed",
