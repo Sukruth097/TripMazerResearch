@@ -133,11 +133,11 @@ def search_restaurants(location: str, dates: str = "", dietary_preferences: str 
 1. Parse the itinerary to extract locations, times, and activities
 2. For each day and location, suggest appropriate restaurants
 3. Consider meal times: breakfast (7-10 AM), lunch (12-3 PM), dinner (6-9 PM), snacks/cafes (other times)
-4. Match restaurant proximity to itinerary locations
+4. Match restaurant proximity to itinerary locations and gather COMPLETE location details for each restaurant: full street address with building/house numbers, block/area numbers, nearby unique landmarks (e.g., "Near Bull Temple", "Opposite Forum Mall"), postal codes/pin codes, and business-specific identifiers (if chain restaurant, note the specific outlet). VERIFY this information uniquely identifies ONE location only. Use nearby unique landmarks, ratings, or distinctive features to distinguish the specific outlet if multiple exist. Use this complete information to generate precise Google Maps links.
 5. Respect dietary preferences strictly
 6. Include local cuisine specialties
 7. Provide realistic price ranges in correct currency (consider INR 800-1500 per person per day for decent meals in India)
-8. Add Google Maps links as clickable restaurant names
+8. Add Google Maps links in the Map column (NOT in the Restaurant column) using this EXACT format to target a single, specific location: [Restaurant Name](https://www.google.com/maps/search/?api=1&query=[URL-ENCODED Complete Unique Location Query]). CRITICAL REQUIREMENTS: The query MUST include ALL of the following in this order: Restaurant Full Name + Complete Street Address/Block Number + Specific Area/Neighborhood + Nearby Unique Landmark (if available) + Postal Code/Pin Code (if available) + City + State/Country. This ensures the link points to ONE specific outlet only. Examples: "MTR Mavalli Tiffin Room 14 Lalbagh Road Basavanagudi Near Bull Temple Bangalore 560004" or "A2B Restaurant 9th Block 4th Main Road Jayanagar Near South End Circle Bangalore 560069" or "Johnson's Café Old Mall Road Near Circuit House Manali Himachal Pradesh 175131". ALWAYS include postal codes, complete street addresses, and nearby unique landmarks to ensure Google Maps resolves to a single location. If the restaurant has multiple outlets, specify the exact outlet being recommended. The Restaurant column should contain only plain text restaurant names.
 9. **BUDGET UTILIZATION**: Recommend restaurants that make good use of the available budget while respecting dietary preferences and user tastes. If budget seems low, suggest budget-friendly options but mention realistic alternatives.
 
 **RESPONSE FORMAT (MANDATORY):**
@@ -154,16 +154,16 @@ def search_restaurants(location: str, dates: str = "", dietary_preferences: str 
 
 ## Day 1 - [Date] | [Location]
 
-| Time | Location | Restaurant | Cuisine | Price Range | Dietary Options | Maps |
-|------|----------|------------|---------|-------------|-----------------|------|
-| [Time] | [Specific area/landmark] | [Restaurant Name] | [Cuisine type] | [Currency][Price range] | [Veg/Non-veg/Both] | [[Restaurant Name](https://maps.google.com/search/[Restaurant+Name+Location])] |
-| [Time] | [Area] | [Restaurant] | [Cuisine] | [Price] | [Dietary] | [[Restaurant](link)] |
+| Time | Location/Area | Restaurant | Cuisine Type | Price Range (INR) | Dietary Options | Map |
+|------|---------------|------------|--------------|-------------------|-----------------|-----|
+| [Time] | Basavanagudi, 14 Lalbagh Road | Restaurant Name (PLAIN TEXT - NO LINK) | [Cuisine type] | [Price range] | [Veg/Non-veg/Both] | [Restaurant Name](https://www.google.com/maps/search/?api=1&query=Restaurant+Name+14+Lalbagh+Road+Basavanagudi+Near+Bull+Temple+Bangalore+560004) |
+| [Time] | Koramangala, 5th Block, 4th Main | Another Restaurant (PLAIN TEXT) | [Cuisine] | [Price] | [Dietary] | [Another Restaurant](https://www.google.com/maps/search/?api=1&query=Another+Restaurant+5th+Block+4th+Main+Road+Koramangala+Near+Forum+Mall+Bangalore+560095) |
 
 ## Day 2 - [Date] | [Location]
 
-| Time | Location | Restaurant | Cuisine | Price Range | Dietary Options | Maps |
-|------|----------|------------|---------|-------------|-----------------|------|
-| [Time] | [Area] | [Restaurant] | [Cuisine] | [Price] | [Dietary] | [[Restaurant](link)] |
+| Time | Location/Area | Restaurant | Cuisine Type | Price Range (INR) | Dietary Options | Map |
+|------|---------------|------------|--------------|-------------------|-----------------|-----|
+| [Time] | Area, Full Street Address | Restaurant Name (PLAIN TEXT - NO LINK) | [Cuisine] | [Price] | [Dietary] | [Restaurant Name](https://www.google.com/maps/search/?api=1&query=Restaurant+Name+Full+Street+Address+Area+Nearby+Landmark+City+Postal+Code) |
 
 [Continue for all days...]
 
@@ -183,7 +183,10 @@ def search_restaurants(location: str, dates: str = "", dietary_preferences: str 
 **IMPORTANT:**
 - Always use INR (Indian Rupees) currency throughout for all locations
 - Ensure all restaurant suggestions align with specified dietary preferences
-- Provide clickable Google Maps links for each restaurant
+- **CRITICAL: Restaurant column must contain ONLY plain text (restaurant name), NO links. Map column must contain the clickable Google Maps link.**
+- **MAINTAIN FORMAT CONSISTENCY:** Follow the exact table structure and formatting rules provided above. Use consistent column headers, date formats, time formats, and currency notation across all days. Ensure all sections (Extracted Information, Day tables, Restaurant Highlights, Dining Tips) are included in every response.
+- For each restaurant, the Map column should have a clickable Google Maps link in the format: [Restaurant Name](https://www.google.com/maps/search/?api=1&query=[URL-ENCODED Complete Unique Location Query]). The query MUST include ALL available details in this order: Restaurant Full Name + Complete Street Address with Number + Specific Area/Block + Nearby Unique Landmark + Postal Code/Pin Code + City + State. Examples: "MTR Mavalli Tiffin Room 14 Lalbagh Road Basavanagudi Near Bull Temple Bangalore 560004" or "A2B Restaurant 9th Block 4th Main Road Jayanagar Near South End Circle Bangalore 560069". CRITICAL: Always include postal codes, complete street addresses with numbers, and nearby unique landmarks. If the restaurant is part of a chain, verify and specify the exact outlet location. This ensures Google Maps resolves to exactly ONE location, not multiple outlets.
+- The Restaurant column should be plain text only (e.g., "Maisie Cafe" not "[Maisie Cafe](link)")
 - Consider meal timing logically with itinerary activities (if provided)"""
 
         # Build search query based on mode
@@ -197,7 +200,7 @@ Dietary Preferences: {dietary_preferences}
 Travelers: {travelers}
 Budget: {budget_hint if budget_hint else 'Flexible'}
 
-Provide restaurant recommendations near each activity location with meal timings."""
+Provide restaurant recommendations near each activity location with meal timings. For each restaurant, provide COMPLETE location details including: full street address with house/building numbers, specific area/neighborhood, nearby unique landmarks, postal codes/pin codes, and if it's a chain restaurant, specify which exact outlet location. This information is critical for generating precise map links."""
         else:
             # Independent location-based search
             search_query = f"""Find the best restaurants in {location} for {travelers} person{'s' if travelers > 1 else ''}.
@@ -211,7 +214,9 @@ Provide diverse restaurant options categorized by:
 2. Lunch recommendations  
 3. Dinner options
 4. Local specialties and must-try cuisines
-5. Different price ranges (budget, mid-range, fine dining)"""
+5. Different price ranges (budget, mid-range, fine dining)
+
+For each restaurant, provide COMPLETE location details including: full street address with house/building numbers, specific area/neighborhood, nearby unique landmarks, postal codes/pin codes, and if it's a chain restaurant, specify which exact outlet location. This information is critical for generating precise map links."""
 
         # Search using Perplexity
         results = perplexity_service.search(

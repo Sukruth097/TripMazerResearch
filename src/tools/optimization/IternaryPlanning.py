@@ -46,16 +46,16 @@ def plan_itinerary(query: str) -> str:
         
         | Time | Activity | Details | Maps |
         |------|----------|---------|------|
-        | 9:00 AM | Senso-ji Temple | Traditional Buddhist temple, perfect for couples seeking spiritual experience | [Senso-ji Temple](https://maps.google.com/search/Senso-ji+Temple+Tokyo) |
-        | 12:00 PM | Nakamise Shopping Street | Traditional shopping street near temple | [Nakamise Street](https://maps.google.com/search/Nakamise+Shopping+Street+Tokyo) |
-        | 7:00 PM | Shibuya Nightlife District | Perfect for couples' nightlife experience | [Shibuya](https://maps.google.com/search/Shibuya+Tokyo) |
+        | 9:00 AM | Senso-ji Temple | Traditional Buddhist temple, perfect for couples seeking spiritual experience | [Senso-ji Temple](https://www.google.com/maps/place/Senso-ji+Temple/@35.7147651,139.7966553,17z/data=!3m1!4b1!4m6!3m5!1s0x60188ec1a4463df1:0x6c0d289a8292810d!8m2!3d35.7147651!4d139.7966553!16zL20vMDEyNjBk?entry=ttu) |
+        | 12:00 PM | Nakamise Shopping Street | Traditional shopping street near temple | [Nakamise Street](https://www.google.com/maps/place/Nakamise+Street/@35.7148187,139.7965636,17z/data=!3m1!4b1!4m6!3m5!1s0x60188ec1a4292bf1:0x899c57c52281b7dd!8m2!3d35.7148187!4d139.7965636!16s%2Fm%2F0h3r8mb?entry=ttu) |
+        | 7:00 PM | Shibuya Nightlife District | Perfect for couples' nightlife experience | [Shibuya](https://www.google.com/maps/place/Shibuya/@35.6617773,139.7040506,17z/data=!3m1!4b1!4m6!3m5!1s0x60188ca40bf4df3b:0x6c0d289a8292810d!8m2!3d35.6617773!4d139.7040506!16zL20vMDJfNXo1?entry=ttu) |
         
         ## Day 2 - December 26, 2025
         
         | Time | Activity | Details | Maps |
         |------|----------|---------|------|
-        | 10:00 AM | Meiji Shrine | Peaceful shrine in the heart of Tokyo | [Meiji Shrine](https://maps.google.com/search/Meiji+Shrine+Tokyo) |
-        | 2:00 PM | Ginza Shopping | High-end shopping district | [Ginza](https://maps.google.com/search/Ginza+Tokyo) |
+        | 10:00 AM | Meiji Shrine | Peaceful shrine in the heart of Tokyo | [Meiji Shrine](https://www.google.com/maps/place/Meiji+Shrine/@35.6762115,139.6993259,17z/data=!3m1!4b1!4m6!3m5!1s0x60188ca2eb69f9a5:0x6c0d289a8292810d!8m2!3d35.6762115!4d139.6993259!16zL20vMDMwOWI5?entry=ttu) |
+        | 2:00 PM | Ginza Shopping | High-end shopping district | [Ginza](https://www.google.com/maps/place/Ginza/@35.6717892,139.7640582,17z/data=!3m1!4b1!4m6!3m5!1s0x60188bbd9009ec09:0x481a93f0d2a409dd!8m2!3d35.6717892!4d139.7640582!16zL20vMDNrbjM?entry=ttu) |
         
         ## Budget Breakdown
         - **Total Budget:** ₹125000 INR
@@ -105,13 +105,8 @@ First, identify and extract these parameters from the user's natural language qu
    - For markets: "In Chandni Chowk, start at Kinari Bazaar for wedding items, then head to Dariba Kalan for silver jewelry, and end at Katra Neel for fabrics also add the eatery places"
    - For religious places: "At Jama Masjid, climb the southern minaret (INR 25) for city views, visit the courtyard during afternoon prayers for cultural experience"
    - For neighborhoods: "In Hauz Khas Village, start at Social for drinks, then Yeti for live music, end at PCO for late-night dancing"
-   
-   **IMPORTANT FORMAT RULES:**
-   - DO NOT include any links or URLs in the Local Recommendations column
-   - Keep all map links ONLY in the Maps column
-   - For each place mentioned in recommendations, include its corresponding map link in the Maps column
 
-2. **TRAVEL DISTANCES & TIME**: Include realistic travel information:
+2. *TRAVEL DISTANCES & TIME*: Include realistic travel information:
    - Distance in KM between activities
    - Actual travel time considering traffic
    - Mode of transport recommendation
@@ -129,15 +124,12 @@ First, identify and extract these parameters from the user's natural language qu
      * Operating hours and best times to visit
    - Suggest lighter days after intensive days
 
-4. **PROPER GOOGLE MAPS LINKS**: Use complete and exact location details that work:
-   - Required format: https://www.google.com/maps/search/Exact+Place+Name+Street+Area+City+State+Country
-   - Examples:
-     * https://www.google.com/maps/search/Jama+Masjid+Chandni+Chowk+Old+Delhi+Delhi+India
-     * https://www.google.com/maps/search/Mount+View+Restaurant+Mall+Road+Old+Manali+Manali+Himachal+Pradesh+India
-
-   - CRITICAL RULES:
-     * ALWAYS include venue name + street + area + city + state + country
-     * DO NOT abbreviate any part of the address
+4. *PROPER GOOGLE MAPS LINKS WITH COORDINATES*: Always include specific coordinates to prevent location confusion:
+   - Preferred Format: https://www.google.com/maps/place/Place+Name/@latitude,longitude,17z/data=!3m1!4b1!4m6!3m5!1s0x123:0x456!8m2!3d[latitude]!4d[longitude]!16s%2Fg%2F789?entry=ttu
+   - Example: https://www.google.com/maps/place/Jama+Masjid/@28.6506735,77.2334904,17z/data=!3m1!4b1!4m6!3m5!1s0x390cfd0683329b61:0x1f2906b0e1e361ed!8m2!3d28.6506735!4d77.2334904!16zL20vMDI5Yjg5?entry=ttu
+   - Fallback Format (if coordinates unavailable): https://www.google.com/maps/search/Exact+Place+Name+Full+Address+City+Country
+   - Link format in table: [Place Name](https://maps.google.com/url-with-coordinates)
+   - **CRITICAL**: Research and include actual latitude,longitude coordinates for each location to ensure precise mapping
 
 5. *BUDGET UTILIZATION*: Aim to use most of the available budget for comprehensive experiences based on user preferences.
 
@@ -151,15 +143,16 @@ First, identify and extract these parameters from the user's natural language qu
 
 | Time | Activity | Local Recommendations & Tips | Distance/Transport | Weather | Maps |
 |------|----------|------------------------------|-------------------|---------|------|
-| [Time] | [Activity Name] | *What to do specifically:<br>• [Very detailed first tip with specific prices, timings, contact info, and insider knowledge]<br>• [Very detailed second tip with practical information, alternatives, and local secrets]<br>• [Additional detailed tips as needed - not mandatory to have exactly 3, can be 2-4 based on activity complexity] | **From previous:* [X]km, [Y] mins by [transport] | *Best time:* [Morning/Afternoon/Evening]<br>*Conditions:* [Weather considerations] | [[Activity Name](https://www.google.com/maps/search/Activity+Name+City+Country)] |
+| [Time] | [Activity Name] | *What to do specifically:<br>• [Very detailed first tip with specific prices, timings, contact info, and insider knowledge]<br>• [Very detailed second tip with practical information, alternatives, and local secrets]<br>• [Additional detailed tips as needed - not mandatory to have exactly 3, can be 2-4 based on activity complexity] | **From previous:* [X]km, [Y] mins by [transport] | *Best time:* [Morning/Afternoon/Evening]<br>*Conditions:* [Weather considerations] | [[Activity Name](https://www.google.com/maps/place/Activity+Name/@latitude,longitude,17z/data=!3m1!4b1!4m6!3m5!1s0x123:0x456!8m2!3dlatitude!4dlongitude!16s%2Fg%2F789?entry=ttu)] |
 
 
 ## Day 2 - [Date]
 
 | Time | Activity | Local Recommendations & Tips | Distance/Transport | Weather | Maps |
 |------|----------|------------------------------|-------------------|---------|------|
-| [Time] | [Activity Name] | *What to do specifically:<br>• [Comprehensive first recommendation with all necessary details]<br>• [Comprehensive second recommendation with practical insights]<br>• [Add more recommendations only if the activity warrants detailed guidance] | **From previous:* [X]km, [Y] mins by [transport] | *Best time:* [Time recommendation]<br>*Conditions:* [Weather advice] | [[Activity Name](https://www.google.com/maps/search/Activity+Name+City+Country)] |
+| [Time] | [Activity Name] | *What to do specifically:<br>• [Comprehensive first recommendation with all necessary details]<br>• [Comprehensive second recommendation with practical insights]<br>• [Add more recommendations only if the activity warrants detailed guidance] | **From previous:* [X]km, [Y] mins by [transport] | *Best time:* [Time recommendation]<br>*Conditions:* [Weather advice] | [[Activity Name](https://www.google.com/maps/place/Activity+Name/@latitude,longitude,17z/data=!3m1!4b1!4m6!3m5!1s0x123:0x456!8m2!3dlatitude!4dlongitude!16s%2Fg%2F789?entry=ttu)] |
 
+[Continue for all days...]
 
 ## Budget Breakdown
 - *Total Budget:* [Currency][Amount] [Currency Code]
@@ -176,8 +169,8 @@ First, identify and extract these parameters from the user's natural language qu
 - *Cultural Etiquette:* [Specific local customs and dress codes]
 - *Safety Tips:* [Location-specific safety advice]
 
-**EXAMPLE OF GOOD LOCAL RECOMMENDATIONS AND MAPS:**
-❌ BAD: "Explore Old Delhi markets with links: [Chandni Chowk](map_link)"
+*EXAMPLE OF GOOD LOCAL RECOMMENDATIONS:*
+❌ BAD: "Explore Old Delhi markets"
 ✅ GOOD: 
 *What to do specifically:*<br>• Start at Chandni Chowk metro (₹10 entry), walk 5 mins to Paranthe Wali Gali - try Pandit Gaya Prasad's parathas (₹80-120 each, 6 varieties available, open 7 AM-11 PM, cash only). Best parathas: Aloo, Gobhi, Paneer<br>• Visit Karim's for authentic Mughlai kebabs (₹200-300 per plate, established 1913, try Mutton Burra and Chicken Jehangiri, open 11 AM-11 PM, accepts cards). Get there early to avoid 30-min wait times
 
@@ -202,10 +195,7 @@ First, identify and extract these parameters from the user's natural language qu
 - Provide 3-4 activities max per day with proper buffers
 - Include specific local knowledge and insider tips
 - Show realistic travel times and distances
-- Consider traffic patterns and local conditions
-- After the last day's table, move directly to Budget Breakdown section
-- DO NOT add any suggestions or comments about remaining days"""
-
+- Consider traffic patterns and local conditions"""
 
         # Search using Perplexity with the combined extraction and planning prompt
         results = perplexity_service.search(

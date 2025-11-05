@@ -552,7 +552,14 @@ def restaurants_section():
         if itinerary_input and travel_dates_rest:
             with st.spinner("🔄 Finding restaurants..."):
                 try:
-                    results = search_restaurants(itinerary_input, travel_dates_rest, dietary_prefs, budget_hint)
+                    results = search_restaurants.invoke({
+                        "location": "",  # optional; itinerary may contain locations
+                        "dates": travel_dates_rest,
+                        "dietary_preferences": dietary_prefs,
+                        "budget_hint": budget_hint,
+                        "travelers": 2,
+                        "itinerary_details": itinerary_input
+                    })
                     
                     st.success("✅ Restaurants found!")
                     st.markdown(results, unsafe_allow_html=True)
