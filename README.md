@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # Tripmazer
 
 ## 1. Travel Budget Optimization
